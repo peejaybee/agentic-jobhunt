@@ -41,6 +41,7 @@ pdf_skill = load_skill_from_dir(os.path.join(workspace_root, ".agents", "skills"
 score_skill = load_skill_from_dir(os.path.join(workspace_root, ".agents", "skills", "ats-scoring"))
 filter_skill = load_skill_from_dir(os.path.join(workspace_root, ".agents", "skills", "filtering-bad-jobs"))
 jsearch_skill = load_skill_from_dir(os.path.join(workspace_root, ".agents", "skills", "jsearch-rapidapi"))
+exclude_skill = load_skill_from_dir(os.path.join(workspace_root, ".agents", "skills", "excluding-employers"))
 
 # Set up dummy tool context for running ADK tools programmatically
 class DummyInvocationContext:
@@ -271,6 +272,52 @@ async def fetch_jsearch_jobs_via_skill(job_titles_str: str) -> list[dict]:
         print(f"Warning: Failed to run JSearch skill: {e}")
         return []
 
+async def check_exclusion_via_skill(
+    run_exclude_tool: RunSkillScriptTool,
+    job: dict,
+    idx: int,
+    total: int,
+    semaphore: asyncio.Semaphore
+) -> tuple[dict, bool]:
+    """Checks if a job's employer is excluded using the excluding-employers skill."""
+    async with semaphore:
+        company_name = job.get("company_name", "")
+        try:
+            res = await run_exclude_tool.run_async(
+                args={
+                    "skill_name": "excluding-employers",
+                    "file_path": "scripts/exclude_employers.py",
+                    "args": [
+                        "--company_name", company_name,
+                        "--file_path", os.path.abspath(os.path.join(workspace_root, "excluded_employers.txt"))
+                    ]
+                },
+                tool_context=tool_context
+            )
+            
+            if res.get("status") != "success" or res.get("error"):
+                error_msg = res.get("error") or res.get("stderr") or "Unknown error"
+                print(f"Warning: Exclusion skill failed for {company_name}: {error_msg}")
+                return job, False
+                
+            stdout = res.get("stdout", "").strip()
+            
+            json_start = stdout.find("{")
+            json_end = stdout.rfind("}") + 1
+            if json_start != -1 and json_end != 0:
+                parsed = json.loads(stdout[json_start:json_end])
+                excluded = parsed.get("excluded", False)
+                reason = parsed.get("reason", "")
+                if excluded:
+                    print(f"[{idx}/{total}] Employer filter: EXCLUDED {company_name} - {reason}")
+                return job, excluded
+            else:
+                return job, False
+        except Exception as e:
+            print(f"[{idx}/{total}] Error running exclusion filter for {company_name}: {e}")
+            return job, False
+
+
 
 def is_job_match(job: dict, query_titles: list[str]) -> bool:
     """Checks if a job fits the query titles (case-insensitive substring and keyword-based match)."""
@@ -474,19 +521,43 @@ async def run_matching_pipeline(resume_text: str, jobs: list[dict], model_name: 
     """Filters matching jobs by salary, then evaluates the passed ones using the ats-scoring skill."""
     code_executor = UnsafeLocalCodeExecutor()
     
+    # 0. Employer Exclusion Phase
+    exclude_toolset = SkillToolset(skills=[exclude_skill], code_executor=code_executor)
+    run_exclude_tool = RunSkillScriptTool(exclude_toolset)
+    
+    semaphore = asyncio.Semaphore(3)
+    exclude_tasks = []
+    total_jobs = len(jobs)
+    print(f"Running employer exclusion check on all {total_jobs} matching jobs using ADK 'excluding-employers' skill...")
+    
+    for i, job in enumerate(jobs):
+        task = asyncio.create_task(
+            check_exclusion_via_skill(
+                run_exclude_tool, job, i + 1, total_jobs, semaphore
+            )
+        )
+        exclude_tasks.append(task)
+        
+    exclude_results = await asyncio.gather(*exclude_tasks)
+    kept_jobs = [job for job, excluded in exclude_results if not excluded]
+    
+    print(f"Employer filter completed. {len(kept_jobs)} out of {total_jobs} jobs kept.")
+    
+    if not kept_jobs:
+        return []
+        
     # 1. Salary Filtering Phase
     filter_toolset = SkillToolset(skills=[filter_skill], code_executor=code_executor)
     run_filter_tool = RunSkillScriptTool(filter_toolset)
     
-    semaphore = asyncio.Semaphore(3)
     filter_tasks = []
-    total_jobs = len(jobs)
-    print(f"Running salary filter on all {total_jobs} matching jobs using ADK 'filtering-bad-jobs' skill...")
+    total_kept = len(kept_jobs)
+    print(f"Running salary filter on all {total_kept} matching jobs using ADK 'filtering-bad-jobs' skill...")
     
-    for i, job in enumerate(jobs):
+    for i, job in enumerate(kept_jobs):
         task = asyncio.create_task(
             filter_job_via_skill(
-                run_filter_tool, job, i + 1, total_jobs, model_name, semaphore
+                run_filter_tool, job, i + 1, total_kept, model_name, semaphore
             )
         )
         filter_tasks.append(task)
@@ -494,7 +565,7 @@ async def run_matching_pipeline(resume_text: str, jobs: list[dict], model_name: 
     filter_results = await asyncio.gather(*filter_tasks)
     passed_jobs = [job for job, passed in filter_results if passed]
     
-    print(f"Salary filter completed. {len(passed_jobs)} out of {total_jobs} jobs passed the $150k+ salary requirement.")
+    print(f"Salary filter completed. {len(passed_jobs)} out of {total_kept} jobs passed the $150k+ salary requirement.")
     
     if not passed_jobs:
         return []
