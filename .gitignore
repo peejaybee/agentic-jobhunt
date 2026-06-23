@@ -3,5 +3,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Environments
+.env
+
 # Dashboard HTML files
 job_matches_*.html
