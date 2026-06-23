@@ -438,26 +438,6 @@ async def check_exclusion_via_skill(
 
 
 
-def is_job_match(job: dict, query_titles: list[str]) -> bool:
-    """Checks if a job fits the query titles (case-insensitive substring and keyword-based match)."""
-    job_title_lower = job["title"].lower()
-    
-    for title in query_titles:
-        title_lower = title.strip().lower()
-        if not title_lower:
-            continue
-            
-        # Direct substring match
-        if title_lower in job_title_lower:
-            return True
-            
-        # Keyword-based match
-        query_words = [w for w in title_lower.split() if len(w) > 2]
-        if query_words and all(word in job_title_lower for word in query_words):
-            return True
-            
-    return False
-
 def format_date_badge(pub_date_str: str) -> str:
     """Format publication dates nicely if possible."""
     if not pub_date_str:
@@ -753,24 +733,9 @@ async def run_pipeline(resume_path: str, job_titles_str: str, model_name: str, m
         print("No jobs fetched from any job boards. Exiting.")
         sys.exit(1)
         
-    # 3. Filter Jobs
-    query_titles = [t.strip() for t in job_titles_str.split(",") if t.strip()]
-    print(f"Filtering jobs matching titles: {query_titles}")
-    filtered_jobs = [job for job in all_jobs if is_job_match(job, query_titles)]
-    print(f"Found {len(filtered_jobs)} matching jobs out of {len(all_jobs)} total listings.")
-    
-    if not filtered_jobs:
-        print("No matching jobs found in feeds for the specified titles.")
-        output_path = generate_dashboard(
-            rated_jobs=[],
-            resume_path=resume_path,
-            searched_keywords=job_titles_str,
-            total_found=0,
-            total_evaluated=0
-        )
-        print(f"Generated empty dashboard: {output_path}")
-        webbrowser.open(f"file:///{output_path}")
-        return
+    # 3. Filter Jobs (Skipping local title filtering to evaluate all fetched jobs)
+    print(f"Proceeding with all {len(all_jobs)} fetched jobs from feeds.")
+    filtered_jobs = all_jobs
         
     # 4. Evaluate matching jobs using the ats_scoring skill
     try:
