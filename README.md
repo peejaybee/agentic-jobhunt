@@ -1,16 +1,23 @@
 # ATS Job Matcher & Scoring Agent
 
-An AI-powered, multi-skill remote job crawler and resume evaluation agent. It aggregates remote job postings, filters them based on keywords and high salary requirements ($150,000+/year and listed ranges), ranks them against your PDF resume using a local LLM via Ollama, and generates a beautiful interactive glassmorphic dashboard.
+An AI-powered, multi-skill remote job crawler and resume evaluation agent. It aggregates remote job postings across multiple feeds, performs safety and employer exclusion checks, filters them based on compensation requirements, ranks them against your PDF resume using local LLM agents via Ollama, and generates a beautiful interactive glassmorphic dashboard.
 
 ---
 
-## Multi-Skill Architecture
+## Features & Multi-Skill Architecture
 
-The agent is built using the Google ADK framework with the following custom skills under `.agents/skills/`:
-1. **`pdf-parsing`**: Extracts text from local PDF resumes using the `pypdf` library.
-2. **`filtering-bad-jobs`**: Employs local LLM analysis to parse job descriptions, identify salary ranges (standardizing hourly/monthly rates to USD/year), and filter out listings that pay less than $150k or omit salary information.
-3. **`ats-scoring`**: Scores qualified listings from 0 to 100 against your parsed resume and outputs structural AI Recruiter feedback.
-4. **`jsearch-rapidapi`**: Queries high-volume web job postings using JSearch via RapidAPI.
+The agent is built using the Google ADK framework and orchestrates five modular skills located under `.agents/skills/`:
+
+1. **`pdf-parsing`** (Script-Based): Extracts text from local PDF resumes using the `pypdf` library.
+2. **`excluding-employers`** (Script-Based): Filters out listings from companies specified in `excluded_employers.txt` (e.g. Lemon.io) using case-insensitive checks.
+3. **`jsearch-rapidapi`** (Script-Based): Queries high-volume web job postings using JSearch via RapidAPI.
+4. **`filtering-bad-jobs`** (In-Process Agent): Uses a local LLM agent to parse unstructured job descriptions, normalize salary ranges to USD/year, and exclude listings that pay below your target threshold or omit compensation information.
+5. **`ats-scoring`** (In-Process Agent): Evaluates resume compatibility against qualified job descriptions, returning a match suitability score (0-100) and structured AI recruiter feedback.
+
+### Advanced Agentic Behaviors
+* **Progressive Disclosure**: Reconfigured to use a dynamic `LocalSkillRegistry`. Instead of hardcoding skill data, the orchestrator loads `SKILL.md` definitions dynamically from disk only when a skill tool is invoked.
+* **Self-Correction (Reflexivity)**: In-process LLM agent runners feature built-in syntax correction. If the local LLM generates a malformed response or invalid JSON structure, the runner intercepts the error and re-prompts the model with error feedback under the *same session context* to self-correct.
+* **Security Sanitization**: Utilizes a custom `SafeHTMLSanitizer` parser to strip dangerous HTML tags (e.g., `<script>`, `<iframe>`), dangerous attributes (`onclick`, `onload`), and unescaped payloads from job descriptions before rendering them in the HTML dashboard (mitigating XSS).
 
 ---
 
@@ -60,15 +67,19 @@ The agent is built using the Google ADK framework with the following custom skil
 Double-click or run `run.bat` on Windows. It will prompt you for the path to your resume, search terms, and the local Ollama model to use.
 
 ### 2. Command Line Mode
-Run the python script directly by passing parameters:
+Run the Python script directly by passing parameters:
 ```bash
-python job_matcher_agent.py --resume resume.pdf --titles "Python Developer, Software Engineer" --max-eval 10
+python job_matcher_agent.py --resume resume.pdf --titles "Python Developer, Software Engineer" --max-eval 10 --min-salary 120000 --concurrency 2
 ```
 
-* `--resume`: Absolute or relative path to your PDF resume.
-* `--titles`: Comma-separated list of keywords/job titles to match.
-* `--model`: Optional LiteLLM-compatible Ollama model name (default: `ollama_chat/llama3.1:latest`).
-* `--max-eval`: Maximum number of qualified jobs to score using the local LLM.
+#### CLI Parameters:
+* `--resume`: (Required) Path to your local PDF resume.
+* `--titles`: (Required) Comma-separated list of keywords/job titles to match.
+* `--model`: LiteLLM-compatible Ollama model name (default: `ollama_chat/llama3.1:latest`).
+* `--max-eval`: Maximum number of qualified jobs to score using the local LLM (default: `30`).
+* `--min-salary`: Minimum salary threshold in USD to keep a job (default: `150000`).
+* `--concurrency`: Maximum concurrent LLM calls allowed (default: `3`). Capping concurrency protects local LLMs from CPU/GPU memory exhaustion.
+* `--desc-limit`: Character limit for truncating job descriptions sent to LLMs (default: `10000`). Keeps token windows compact.
 
 ---
 
@@ -81,7 +92,7 @@ Open `run_scheduled.bat` in a text editor and update the paths and arguments to 
 ```bat
 @echo off
 cd /d "%~dp0"
-python job_matcher_agent.py --resume C:\path\to\your\resume.pdf --titles "Python Developer, Software Engineer, Data Scientist" --max-eval 10
+python job_matcher_agent.py --resume C:\path\to\your\resume.pdf --titles "Python Developer, Software Engineer, Data Scientist" --max-eval 10 --min-salary 150000 --concurrency 3 --desc-limit 10000
 ```
 
 ### Step 2: Set Up Task Scheduler
