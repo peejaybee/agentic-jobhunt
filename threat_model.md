@@ -63,7 +63,7 @@ flowchart TD
   * *Description*: The orchestrator embeds job descriptions (`job["description"]`) raw into the generated HTML dashboard:
     `job_description=job["description"]` (without `html.escape` or sanitization). If an untrusted external job feed serves a description containing malicious HTML/JS payloads (e.g., `<script>`, `<iframe onload=...>`, or event handlers), these scripts will execute in the user's browser context when `webbrowser.open()` loads the report.
   * *Risk*: **High** (arbitrary client-side execution when reading the report).
-  * *Mitigation*: Sanitize or HTML-escape `job["description"]` before inserting it into the dashboard template, or use a markdown/HTML parser that strips dangerous tags (like scripts/iframes) before rendering.
+  * *Mitigation*: **[MITIGATED]** Implemented a custom Python `SafeHTMLSanitizer` based on `html.parser.HTMLParser` in `orchestrator.py` that strips unsafe tags (e.g. `<script>`, `<iframe>`, `<embed>`, `<form>`, `<style>`), drops inline event-handler attributes (e.g. `onclick`, `onload`, `onerror`), ensures only safe styling/formatting tags are rendered, and HTML-escapes all text nodes and publication date badges.
 
 * **Threat T2: Local Configuration Tampering**
   * *Description*: Malicious modifications to `excluded_employers.txt` or `.env` can block desired jobs, load rogue credentials, or redirect API targets.
@@ -123,7 +123,7 @@ flowchart TD
 
 | Threat ID | Pillar | Threat Description | Risk Level | Proposed Mitigation | Status |
 | :--- | :--- | :--- | :---: | :--- | :--- |
-| **T1** | Tampering | Raw job description rendered in HTML (XSS vulnerability) | **High** | Escape or sanitize HTML/JS tags in `job["description"]` before dashboard generation. | **Awaiting Action** |
+| **T1** | Tampering | Raw job description rendered in HTML (XSS vulnerability) | **High** | Safe HTML parsing and sanitization using custom `SafeHTMLSanitizer`. | **Mitigated** |
 | **DoS1** | Denial of Service | Local CPU/GPU exhaustion by concurrent LLM tasks | **Medium** | Reduce concurrency semaphore limit and enforce strict text chunking. | **Partial** |
 | **DoS2** | Denial of Service | RapidAPI quota depletion & IP rate limits | **Medium** | Implement caching for fetched jobs. | **Awaiting Action** |
 | **I2** | Information Disclosure | Resume PII sent to remote LLM endpoints | **Medium** | Validate LLM host configuration; show warning if using remote APIs. | **Awaiting Action** |
