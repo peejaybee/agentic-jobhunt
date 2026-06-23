@@ -9,6 +9,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".
 
 import orchestrator
 import ingestion
+import cache
 
 class MockPart:
     def __init__(self, text):
@@ -28,6 +29,14 @@ class RunState:
 
 @given('my local Ollama instance is running')
 def step_impl(context):
+    os.environ["BEHAVE_TEST"] = "true"
+    db_path = cache.get_db_path()
+    if os.path.exists(db_path):
+        try:
+            os.remove(db_path)
+        except Exception:
+            pass
+    cache.init_db()
     context.ollama_running = True
 
 @given('I have a valid PDF resume file at "{resume_path}"')
@@ -57,12 +66,14 @@ def step_impl(context):
         source = row['Source']
         salary_range = row['Salary Range']
 
+        url_safe_title = title.lower().replace(" ", "-")
+        url_safe_company = company.lower().replace(" ", "-")
         job = {
             "title": title,
             "company_name": company,
             "description": f"Position for a {title} at {company}. Compensation details: {salary_range}.",
             "source": source,
-            "url": "https://example.com/job",
+            "url": f"https://example.com/job/{url_safe_title}-{url_safe_company}",
             "publication_date": "Tue, 23 Jun 2026 12:00:00 GMT",
             "category": "Software Engineering"
         }

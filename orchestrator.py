@@ -10,9 +10,12 @@ import webbrowser
 import xml.etree.ElementTree as ET
 import requests
 from dotenv import load_dotenv
+import hashlib
+import cache
 
 # Load environment variables from .env
 load_dotenv()
+cache.init_db()
 
 import ingestion
 
@@ -329,6 +332,18 @@ async def evaluate_single_job_via_skill(
 ) -> dict:
     """Evaluates a single job by running an ADK Agent in-process that loads the ats-scoring skill."""
     async with semaphore:
+        # Check cache first
+        resume_hash = hashlib.sha256(resume_text.encode("utf-8")).hexdigest()
+        job_url = job.get("url", "")
+        if job_url:
+            cached = cache.get_cached_ats(job_url, resume_hash)
+            if cached is not None:
+                print(f"[{idx}/{total}] Cache HIT for ATS score: {job['title']} at {job['company_name']}")
+                rated_job = job.copy()
+                rated_job["score"] = cached["match_score"]
+                rated_job["explanation"] = cached["explanation"]
+                return rated_job
+
         print(f"[{idx}/{total}] Evaluating job: {job['title']} at {job['company_name']}...")
         
         score = 0
@@ -431,6 +446,9 @@ async def evaluate_single_job_via_skill(
             if parsed is not None:
                 score = int(parsed.get("match_score", 0))
                 explanation = parsed.get("explanation", "No explanation provided.")
+                # Save cache
+                if job_url:
+                    cache.set_cached_ats(job_url, resume_hash, score, explanation)
             else:
                 score = 0
                 explanation = f"Failed to get valid JSON after retries. Last error: {error_msg}"
@@ -456,6 +474,26 @@ async def filter_job_via_skill(
 ) -> tuple[dict, bool]:
     """Filters a job listing by running an ADK Agent in-process that loads the filtering-bad-jobs skill."""
     async with semaphore:
+        # Check cache first
+        job_url = job.get("url", "")
+        if job_url:
+            cached = cache.get_cached_salary(job_url)
+            if cached is not None:
+                has_salary = cached.get("has_salary", False)
+                max_salary = cached.get("max_salary_usd", 0.0)
+                min_salary = cached.get("min_salary_usd", 0.0)
+                passed = has_salary and max_salary >= min_salary_threshold
+                
+                if not has_salary:
+                    reason = "No salary range or pay range is listed in the posting."
+                elif not passed:
+                    reason = f"Salary max ({max_salary}) is below the required ${min_salary_threshold:,} threshold. (Range: {min_salary}-{max_salary})"
+                else:
+                    reason = f"Salary matches threshold: max {max_salary} meets or exceeds ${min_salary_threshold:,}. (Range: {min_salary}-{max_salary})"
+                
+                print(f"[{idx}/{total}] Cache HIT for salary filter: {job['title']} at {job['company_name']}: {'PASSED' if passed else 'FAILED'} - {reason}")
+                return job, passed
+
         print(f"[{idx}/{total}] Checking salary requirements for: {job['title']} at {job['company_name']}...")
         try:
             session_service = InMemorySessionService()
@@ -555,6 +593,11 @@ async def filter_job_via_skill(
                 has_salary = parsed.get("has_salary", False)
                 max_salary = parsed.get("max_salary_usd", 0.0)
                 min_salary = parsed.get("min_salary_usd", 0.0)
+                explanation = parsed.get("explanation", "")
+                
+                # Save cache
+                if job_url:
+                    cache.set_cached_salary(job_url, has_salary, min_salary, max_salary, explanation)
                 
                 passed = has_salary and max_salary >= min_salary_threshold
                 
@@ -687,15 +730,20 @@ async def run_pipeline(
         print(f"Critical Error parsing resume: {e}")
         sys.exit(1)
         
-    # 2. Fetch Job Boards via Decoupled Ingestion
-    wwr_jobs = ingestion.fetch_weworkremotely_jobs()
-    remotive_jobs = ingestion.fetch_remotive_jobs()
-    arbeitnow_jobs = ingestion.fetch_arbeitnow_jobs()
-    themuse_jobs = ingestion.fetch_themuse_jobs()
-    jsearch_jobs = await ingestion.fetch_jsearch_jobs_via_skill(
+    # 2. Fetch Job Boards via Decoupled Ingestion concurrently
+    print("Starting concurrent data ingestion from job feeds...")
+    wwr_task = asyncio.create_task(asyncio.to_thread(ingestion.fetch_weworkremotely_jobs))
+    remotive_task = asyncio.create_task(asyncio.to_thread(ingestion.fetch_remotive_jobs))
+    arbeitnow_task = asyncio.create_task(asyncio.to_thread(ingestion.fetch_arbeitnow_jobs))
+    themuse_task = asyncio.create_task(asyncio.to_thread(ingestion.fetch_themuse_jobs))
+    jsearch_task = asyncio.create_task(ingestion.fetch_jsearch_jobs_via_skill(
         job_titles_str=job_titles_str,
         skill_registry=skill_registry,
         tool_context=tool_context
+    ))
+    
+    wwr_jobs, remotive_jobs, arbeitnow_jobs, themuse_jobs, jsearch_jobs = await asyncio.gather(
+        wwr_task, remotive_task, arbeitnow_task, themuse_task, jsearch_task
     )
     all_jobs = wwr_jobs + remotive_jobs + arbeitnow_jobs + themuse_jobs + jsearch_jobs
     

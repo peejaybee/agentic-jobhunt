@@ -8,3 +8,6 @@ __pycache__/
 
 # Dashboard HTML files
 job_matches_*.html
+
+# SQLite cache
+jobs_cache.db
