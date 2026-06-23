@@ -83,6 +83,27 @@ python job_matcher_agent.py --resume resume.pdf --titles "Python Developer, Soft
 
 ---
 
+## Caching & Performance
+
+To optimize execution speed and minimize local LLM load, the agent utilizes a local SQLite database (`jobs_cache.db`) in the workspace root to cache job evaluations:
+* **Salary Filter Cache**: Stores the outcome of salary extraction checks, keyed by the job's URL. Since job compensation ranges are candidate-independent, this cache persists long-term.
+* **Resume-Sensitive ATS Cache**: Stores resume compatibility matching scores, keyed by the job's URL and the candidate's resume text SHA-256 hash. If you update your resume, the agent automatically detects the hash difference and re-evaluates the match score, while still loading the salary checks from the cache.
+* **Concurrent Ingestion**: Job board feed retrievals are run concurrently in background threads using `asyncio.to_thread` alongside JSearch async fetching, reducing feed ingestion time to a fraction of sequential fetching.
+
+---
+
+## Development & BDD Testing
+
+The project uses Behavior-Driven Development (BDD) specifications via `behave` to verify orchestrator, ingestion, and self-correction behaviors under mocked LLM and network conditions.
+
+To run the BDD test suite:
+```bash
+python -m behave features/job_matcher.feature
+```
+The test run isolates itself from the production cache by using a temporary `jobs_cache_test.db` database and clearing it before every scenario.
+
+---
+
 ## Scheduling the Agent (Windows 11 Task Scheduler)
 
 To run the agent automatically every weekday at 1:00 AM:
