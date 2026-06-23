@@ -16,7 +16,7 @@ Feature: Remote Job Matching and Resume Scoring
       | Software Engineer | Dev Shop    | Arbeitnow         | Not Specified       |
       | ML Engineer       | AI Labs     | The Muse          | $170,000 - $220,000 |
     When I run the matching agent with query "Python, ML" and max evaluation limit of 2
-    Then the agent should crawl jobs from We Work Remotely, Remotive, Arbeitnow, and The Muse
+    Then the agent should crawl jobs from We Work Remotely, Remotive, Arbeitnow, The Muse, and JSearch
     And the agent should filter listings by title matching "Python" or "ML"
     And the agent should evaluate matching listings against the $150k salary threshold
     And only the "Python Developer" and "ML Engineer" jobs should pass the salary filter

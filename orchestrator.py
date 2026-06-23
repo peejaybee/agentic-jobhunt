@@ -40,6 +40,7 @@ workspace_root = os.path.dirname(os.path.abspath(__file__))
 pdf_skill = load_skill_from_dir(os.path.join(workspace_root, ".agents", "skills", "pdf-parsing"))
 score_skill = load_skill_from_dir(os.path.join(workspace_root, ".agents", "skills", "ats-scoring"))
 filter_skill = load_skill_from_dir(os.path.join(workspace_root, ".agents", "skills", "filtering-bad-jobs"))
+jsearch_skill = load_skill_from_dir(os.path.join(workspace_root, ".agents", "skills", "jsearch-rapidapi"))
 
 # Set up dummy tool context for running ADK tools programmatically
 class DummyInvocationContext:
@@ -223,6 +224,51 @@ def fetch_themuse_jobs() -> list[dict]:
         return jobs
     except Exception as e:
         print(f"Warning: Failed to fetch The Muse jobs: {e}")
+        return []
+
+async def fetch_jsearch_jobs_via_skill(job_titles_str: str) -> list[dict]:
+    """Fetches jobs from JSearch API using the jsearch-rapidapi custom ADK skill."""
+    print("Fetching jobs from JSearch API via ADK skill...")
+    try:
+        code_executor = UnsafeLocalCodeExecutor()
+        toolset = SkillToolset(skills=[jsearch_skill], code_executor=code_executor)
+        run_skill_script_tool = RunSkillScriptTool(toolset)
+        
+        # Use the first job title search query as the query for JSearch
+        first_title = job_titles_str.split(",")[0].strip() if job_titles_str else "Python Developer"
+        query = f"{first_title} in Remote"
+        
+        res = await run_skill_script_tool.run_async(
+            args={
+                "skill_name": "jsearch-rapidapi",
+                "file_path": "scripts/search_jsearch.py",
+                "args": ["--query", query]
+            },
+            tool_context=tool_context
+        )
+        
+        if res.get("status") != "success" or res.get("error"):
+            error_msg = res.get("error") or res.get("stderr") or "Unknown error"
+            print(f"Warning: JSearch skill execution failed: {error_msg}")
+            return []
+            
+        stderr = res.get("stderr", "").strip()
+        if stderr:
+            print(f"[JSearch Skill Output] {stderr}")
+            
+        stdout = res.get("stdout", "").strip()
+        if not stdout:
+            return []
+            
+        try:
+            jobs = json.loads(stdout)
+            print(f"Retrieved {len(jobs)} jobs from JSearch API.")
+            return jobs
+        except Exception as e:
+            print(f"Warning: Failed to parse JSearch output JSON: {e}")
+            return []
+    except Exception as e:
+        print(f"Warning: Failed to run JSearch skill: {e}")
         return []
 
 
@@ -508,7 +554,8 @@ async def run_pipeline(resume_path: str, job_titles_str: str, model_name: str, m
     remotive_jobs = fetch_remotive_jobs()
     arbeitnow_jobs = fetch_arbeitnow_jobs()
     themuse_jobs = fetch_themuse_jobs()
-    all_jobs = wwr_jobs + remotive_jobs + arbeitnow_jobs + themuse_jobs
+    jsearch_jobs = await fetch_jsearch_jobs_via_skill(job_titles_str)
+    all_jobs = wwr_jobs + remotive_jobs + arbeitnow_jobs + themuse_jobs + jsearch_jobs
     
     if not all_jobs:
         print("No jobs fetched from any job boards. Exiting.")
