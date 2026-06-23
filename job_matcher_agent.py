@@ -27,6 +27,9 @@ async def main():
     parser.add_argument("--titles", required=True, help="Comma-separated list of job titles to search (e.g., 'Python Developer, Software Engineer')")
     parser.add_argument("--model", default="ollama_chat/llama3.1:latest", help="Ollama model to use in LiteLLM format (default: 'ollama_chat/llama3.1:latest')")
     parser.add_argument("--max-eval", type=int, default=30, help="Maximum number of filtered jobs to rate using local LLM (default: 30)")
+    parser.add_argument("--min-salary", type=int, default=150000, help="Minimum salary threshold in USD to keep a job (default: 150000)")
+    parser.add_argument("--concurrency", type=int, default=3, help="Maximum concurrent LLM calls allowed (default: 3)")
+    parser.add_argument("--desc-limit", type=int, default=10000, help="Character limit for truncating job descriptions sent to LLMs (default: 10000)")
     args = parser.parse_args()
     
     print("=" * 60)
@@ -37,7 +40,10 @@ async def main():
         resume_path=args.resume,
         job_titles_str=args.titles,
         model_name=args.model,
-        max_eval=args.max_eval
+        max_eval=args.max_eval,
+        min_salary=args.min_salary,
+        concurrency=args.concurrency,
+        desc_limit=args.desc_limit
     )
 
 if __name__ == "__main__":

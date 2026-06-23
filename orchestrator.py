@@ -14,6 +14,8 @@ from dotenv import load_dotenv
 # Load environment variables from .env
 load_dotenv()
 
+import ingestion
+
 class SafeHTMLSanitizer(HTMLParser):
     def __init__(self):
         super().__init__()
@@ -129,6 +131,11 @@ from google.adk.skills import load_skill_from_dir, list_skills_in_dir
 from google.adk.skills.skill_registry import SkillRegistry
 from google.adk.tools.skill_toolset import SkillToolset, RunSkillScriptTool
 from google.adk.code_executors.unsafe_local_code_executor import UnsafeLocalCodeExecutor
+from google.adk.agents import Agent
+from google.adk.runners import Runner
+from google.adk.models.lite_llm import LiteLlm
+from google.adk.sessions.in_memory_session_service import InMemorySessionService
+from google.genai import types
 from dashboard_template import HTML_TEMPLATE, JOB_CARD_TEMPLATE, NO_MATCHES_TEMPLATE
 
 # Resolve paths to the custom skills
@@ -185,211 +192,7 @@ class DummyToolContext:
         return DummyInvocationContext()
 
 tool_context = DummyToolContext()
-
-
-def fetch_weworkremotely_jobs() -> list[dict]:
-    """Fetches jobs from We Work Remotely RSS feed."""
-    url = "https://weworkremotely.com/remote-jobs.rss"
-    print("Fetching jobs from We Work Remotely...")
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ATSJobMatcher/1.0"}
-    
-    try:
-        r = requests.get(url, headers=headers, timeout=15)
-        r.raise_for_status()
-        
-        root = ET.fromstring(r.content)
-        jobs = []
-        for item in root.findall(".//item"):
-            title_text = item.find("title").text or ""
-            company = "Unknown"
-            title = title_text
-            
-            # WWR RSS titles are formatted as "Company Name: Job Title"
-            if ":" in title_text:
-                parts = title_text.split(":", 1)
-                company = parts[0].strip()
-                title = parts[1].strip()
-                
-            description = item.find("description").text or ""
-            link = item.find("link").text or ""
-            pub_date = item.find("pubDate").text or ""
-            category = item.find("category").text or ""
-            
-            jobs.append({
-                "source": "We Work Remotely",
-                "title": title,
-                "company_name": company,
-                "description": description,
-                "url": link,
-                "publication_date": pub_date,
-                "category": category
-            })
-        
-        print(f"Retrieved {len(jobs)} jobs from We Work Remotely.")
-        return jobs
-    except Exception as e:
-        print(f"Warning: Failed to fetch We Work Remotely jobs: {e}")
-        return []
-
-def fetch_remotive_jobs() -> list[dict]:
-    """Fetches jobs from Remotive API."""
-    url = "https://remotive.com/api/remote-jobs"
-    print("Fetching jobs from Remotive API...")
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ATSJobMatcher/1.0"}
-    
-    try:
-        r = requests.get(url, headers=headers, timeout=20)
-        r.raise_for_status()
-        
-        data = r.json()
-        raw_jobs = data.get("jobs", [])
-        jobs = []
-        for job in raw_jobs:
-            jobs.append({
-                "source": "Remotive",
-                "title": job.get("title", ""),
-                "company_name": job.get("company_name", ""),
-                "description": job.get("description", ""),
-                "url": job.get("url", ""),
-                "publication_date": job.get("publication_date", ""),
-                "category": job.get("category", "")
-            })
-            
-        print(f"Retrieved {len(jobs)} jobs from Remotive API.")
-        return jobs
-    except Exception as e:
-        print(f"Warning: Failed to fetch Remotive jobs: {e}")
-        return []
-
-def fetch_arbeitnow_jobs() -> list[dict]:
-    """Fetches remote jobs from Arbeitnow API."""
-    url = "https://www.arbeitnow.com/api/job-board-api"
-    print("Fetching jobs from Arbeitnow API...")
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ATSJobMatcher/1.0"}
-    
-    try:
-        r = requests.get(url, headers=headers, timeout=15)
-        r.raise_for_status()
-        
-        data = r.json()
-        raw_jobs = data.get("data", [])
-        jobs = []
-        for job in raw_jobs:
-            if not job.get("remote"):
-                continue
-            
-            pub_date = ""
-            created_at = job.get("created_at")
-            if created_at:
-                try:
-                    pub_date = datetime.datetime.fromtimestamp(created_at).strftime("%a, %d %b %Y %H:%M:%S GMT")
-                except Exception:
-                    pub_date = str(created_at)
-            
-            jobs.append({
-                "source": "Arbeitnow",
-                "title": job.get("title", ""),
-                "company_name": job.get("company_name", ""),
-                "description": job.get("description", ""),
-                "url": job.get("url", ""),
-                "publication_date": pub_date,
-                "category": ", ".join(job.get("tags", [])) if job.get("tags") else "Remote Job"
-            })
-            
-        print(f"Retrieved {len(jobs)} remote jobs from Arbeitnow API.")
-        return jobs
-    except Exception as e:
-        print(f"Warning: Failed to fetch Arbeitnow jobs: {e}")
-        return []
-
-def fetch_themuse_jobs() -> list[dict]:
-    """Fetches jobs from The Muse API."""
-    url = "https://www.themuse.com/api/public/jobs?location=Remote&page=1"
-    print("Fetching jobs from The Muse API...")
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ATSJobMatcher/1.0"}
-    
-    try:
-        r = requests.get(url, headers=headers, timeout=15)
-        r.raise_for_status()
-        
-        data = r.json()
-        raw_jobs = data.get("results", [])
-        jobs = []
-        for job in raw_jobs:
-            company = job.get("company", {})
-            company_name = company.get("name", "Unknown") if isinstance(company, dict) else "Unknown"
-            
-            refs = job.get("refs", {})
-            url_link = refs.get("landing_page", "") if isinstance(refs, dict) else ""
-            
-            categories = job.get("categories", [])
-            cat_list = []
-            if isinstance(categories, list):
-                for cat in categories:
-                    if isinstance(cat, dict) and cat.get("name"):
-                        cat_list.append(cat.get("name"))
-            category_str = ", ".join(cat_list) if cat_list else "Remote Job"
-            
-            jobs.append({
-                "source": "The Muse",
-                "title": job.get("name", ""),
-                "company_name": company_name,
-                "description": job.get("contents", ""),
-                "url": url_link,
-                "publication_date": job.get("publication_date", ""),
-                "category": category_str
-            })
-            
-        print(f"Retrieved {len(jobs)} jobs from The Muse API.")
-        return jobs
-    except Exception as e:
-        print(f"Warning: Failed to fetch The Muse jobs: {e}")
-        return []
-
-async def fetch_jsearch_jobs_via_skill(job_titles_str: str) -> list[dict]:
-    """Fetches jobs from JSearch API using the jsearch-rapidapi custom ADK skill."""
-    print("Fetching jobs from JSearch API via ADK skill...")
-    try:
-        code_executor = UnsafeLocalCodeExecutor()
-        toolset = SkillToolset(registry=skill_registry, code_executor=code_executor)
-        run_skill_script_tool = RunSkillScriptTool(toolset)
-        
-        # Use the first job title search query as the query for JSearch
-        first_title = job_titles_str.split(",")[0].strip() if job_titles_str else "Python Developer"
-        query = f"{first_title} in Remote"
-        
-        res = await run_skill_script_tool.run_async(
-            args={
-                "skill_name": "jsearch-rapidapi",
-                "file_path": "scripts/search_jsearch.py",
-                "args": ["--query", query]
-            },
-            tool_context=tool_context
-        )
-        
-        if res.get("status") != "success" or res.get("error"):
-            error_msg = res.get("error") or res.get("stderr") or "Unknown error"
-            print(f"Warning: JSearch skill execution failed: {error_msg}")
-            return []
-            
-        stderr = res.get("stderr", "").strip()
-        if stderr:
-            print(f"[JSearch Skill Output] {stderr}")
-            
-        stdout = res.get("stdout", "").strip()
-        if not stdout:
-            return []
-            
-        try:
-            jobs = json.loads(stdout)
-            print(f"Retrieved {len(jobs)} jobs from JSearch API.")
-            return jobs
-        except Exception as e:
-            print(f"Warning: Failed to parse JSearch output JSON: {e}")
-            return []
-    except Exception as e:
-        print(f"Warning: Failed to run JSearch skill: {e}")
-        return []
+# Fetch functions moved to ingestion.py
 
 async def check_exclusion_via_skill(
     run_exclude_tool: RunSkillScriptTool,
@@ -516,50 +319,118 @@ def generate_dashboard(rated_jobs: list[dict], resume_path: str, searched_keywor
     return output_filepath
 
 async def evaluate_single_job_via_skill(
-    run_skill_script_tool: RunSkillScriptTool,
     resume_text: str,
     job: dict,
     idx: int,
     total: int,
     model_name: str,
-    semaphore: asyncio.Semaphore
+    semaphore: asyncio.Semaphore,
+    desc_limit: int = 10000
 ) -> dict:
-    """Evaluates a single job using the RunSkillScriptTool of ADK's SkillToolset."""
+    """Evaluates a single job by running an ADK Agent in-process that loads the ats-scoring skill."""
     async with semaphore:
         print(f"[{idx}/{total}] Evaluating job: {job['title']} at {job['company_name']}...")
         
+        score = 0
+        explanation = "Evaluation failed."
+        
         try:
-            res = await run_skill_script_tool.run_async(
-                args={
-                    "skill_name": "ats-scoring",
-                    "file_path": "scripts/ats_scorer.py",
-                    "args": [
-                        "--resume_text", resume_text,
-                        "--job_title", job["title"],
-                        "--job_company", job["company_name"],
-                        "--job_desc", job["description"],
-                        "--model", model_name
-                    ]
-                },
-                tool_context=tool_context
+            session_service = InMemorySessionService()
+            session = await session_service.create_session(
+                app_name="ats_evaluator",
+                user_id="anonymous"
+            )
+            model = LiteLlm(model=model_name)
+            toolset = SkillToolset(registry=skill_registry, code_executor=UnsafeLocalCodeExecutor())
+            
+            agent = Agent(
+                model=model,
+                name="ats_orchestration_agent",
+                instruction=(
+                    "You are a recruiting coordinator. You must use the `ats-scoring` skill to rate "
+                    "the candidate's resume against the provided job description. "
+                    "First, load the skill 'ats-scoring' to read the evaluation rules, then output the JSON result "
+                    "strictly matching the expected output format of the skill."
+                ),
+                tools=[toolset]
             )
             
-            if res.get("status") != "success" or res.get("error"):
-                error_msg = res.get("error") or res.get("stderr") or "Unknown error"
-                raise RuntimeError(error_msg)
-                
-            stdout = res.get("stdout", "")
+            runner = Runner(
+                app_name="ats_evaluator",
+                agent=agent,
+                session_service=session_service
+            )
             
-            # Extract JSON block
-            json_start = stdout.find("{")
-            json_end = stdout.rfind("}") + 1
-            if json_start != -1 and json_end != 0:
-                parsed = json.loads(stdout[json_start:json_end])
+            cleaned_desc = job["description"][:desc_limit]
+            user_query = (
+                f"Please evaluate my resume against this job posting.\n\n"
+                f"--- MY RESUME ---\n{resume_text}\n\n"
+                f"--- JOB TITLE ---\n{job['title']}\n\n"
+                f"--- JOB DESCRIPTION ---\n{cleaned_desc}\n"
+            )
+            
+            content = types.Content(
+                role="user",
+                parts=[types.Part.from_text(text=user_query)]
+            )
+            
+            MAX_RETRIES = 2
+            parsed = None
+            for attempt in range(MAX_RETRIES + 1):
+                stdout = ""
+                async for event in runner.run_async(
+                    session_id=session.id,
+                    user_id=session.user_id,
+                    new_message=content
+                ):
+                    if event.content and event.content.parts:
+                        for part in event.content.parts:
+                            if part.text:
+                                stdout += part.text
+                
+                # Extract and parse JSON block
+                json_start = stdout.find("{")
+                json_end = stdout.rfind("}") + 1
+                if json_start != -1 and json_end != 0:
+                    try:
+                        temp_parsed = json.loads(stdout[json_start:json_end])
+                        # Verify the expected fields are present
+                        if "match_score" in temp_parsed and "explanation" in temp_parsed:
+                            parsed = temp_parsed
+                            break  # Success!
+                        else:
+                            missing = [f for f in ["match_score", "explanation"] if f not in temp_parsed]
+                            raise ValueError(f"Missing required fields: {', '.join(missing)}")
+                    except Exception as err:
+                        error_msg = str(err)
+                else:
+                    error_msg = "No JSON block found in output."
+                
+                # If we are here, parsing failed
+                if attempt < MAX_RETRIES:
+                    print(f"[{idx}/{total}] Attempt {attempt + 1} failed for {job['title']} scoring: {error_msg}. Retrying with self-correction...")
+                    corrective_text = (
+                        f"Your previous response was invalid. Error details: {error_msg}\n"
+                        f"Please re-evaluate and output ONLY a valid JSON object matching this schema exactly:\n"
+                        f"{{\n"
+                        f"  \"match_score\": 85,\n"
+                        f"  \"explanation\": \"Summarizing paragraph here.\"\n"
+                        f"}}\n"
+                        f"Ensure only the JSON is returned, and all braces are properly closed."
+                    )
+                    content = types.Content(
+                        role="user",
+                        parts=[types.Part.from_text(text=corrective_text)]
+                    )
+                else:
+                    print(f"[{idx}/{total}] All {MAX_RETRIES + 1} attempts failed for {job['title']} scoring: {error_msg}")
+            
+            if parsed is not None:
                 score = int(parsed.get("match_score", 0))
                 explanation = parsed.get("explanation", "No explanation provided.")
             else:
                 score = 0
-                explanation = f"Failed to find JSON in output: {stdout[:200]}"
+                explanation = f"Failed to get valid JSON after retries. Last error: {error_msg}"
                 
         except Exception as e:
             print(f"[{idx}/{total}] Error evaluating job {job['title']}: {e}")
@@ -572,53 +443,140 @@ async def evaluate_single_job_via_skill(
         return rated_job
 
 async def filter_job_via_skill(
-    run_skill_script_tool: RunSkillScriptTool,
     job: dict,
     idx: int,
     total: int,
     model_name: str,
-    semaphore: asyncio.Semaphore
+    semaphore: asyncio.Semaphore,
+    min_salary_threshold: int = 150000,
+    desc_limit: int = 10000
 ) -> tuple[dict, bool]:
-    """Filters a job listing using the filtering-bad-jobs skill."""
+    """Filters a job listing by running an ADK Agent in-process that loads the filtering-bad-jobs skill."""
     async with semaphore:
         print(f"[{idx}/{total}] Checking salary requirements for: {job['title']} at {job['company_name']}...")
         try:
-            res = await run_skill_script_tool.run_async(
-                args={
-                    "skill_name": "filtering-bad-jobs",
-                    "file_path": "scripts/filter_jobs.py",
-                    "args": [
-                        "--job_title", job["title"],
-                        "--job_desc", job["description"],
-                        "--model", model_name
-                    ]
-                },
-                tool_context=tool_context
+            session_service = InMemorySessionService()
+            session = await session_service.create_session(
+                app_name="salary_filter",
+                user_id="anonymous"
+            )
+            model = LiteLlm(model=model_name)
+            toolset = SkillToolset(registry=skill_registry, code_executor=UnsafeLocalCodeExecutor())
+            
+            agent = Agent(
+                model=model,
+                name="salary_extractor_agent",
+                instruction=(
+                    "You are a compensation analysis assistant. You must use the `filtering-bad-jobs` skill to "
+                    "extract salary details from the job posting.\n"
+                    "First, load the skill 'filtering-bad-jobs' to read the extraction rules, then output the JSON result "
+                    "strictly matching the expected output format of the skill."
+                ),
+                tools=[toolset]
             )
             
-            if res.get("status") != "success" or res.get("error"):
-                error_msg = res.get("error") or res.get("stderr") or "Unknown error"
-                raise RuntimeError(error_msg)
-                
-            stdout = res.get("stdout", "")
+            runner = Runner(
+                app_name="salary_filter",
+                agent=agent,
+                session_service=session_service
+            )
             
-            # Extract JSON block
-            json_start = stdout.find("{")
-            json_end = stdout.rfind("}") + 1
-            if json_start != -1 and json_end != 0:
-                parsed = json.loads(stdout[json_start:json_end])
-                passed = parsed.get("passed", False)
-                reason = parsed.get("reason", "No reason provided.")
+            # Use 80% of the description character limit for the filter task to speed it up
+            filter_desc_limit = int(desc_limit * 0.8)
+            cleaned_desc = job["description"][:filter_desc_limit]
+            user_query = (
+                f"Analyze this job listing for salary or compensation info.\n\n"
+                f"--- JOB TITLE ---\n{job['title']}\n\n"
+                f"--- JOB DESCRIPTION ---\n{cleaned_desc}\n"
+            )
+            
+            content = types.Content(
+                role="user",
+                parts=[types.Part.from_text(text=user_query)]
+            )
+            
+            parsed = None
+            MAX_RETRIES = 2
+            for attempt in range(MAX_RETRIES + 1):
+                stdout = ""
+                async for event in runner.run_async(
+                    session_id=session.id,
+                    user_id=session.user_id,
+                    new_message=content
+                ):
+                    if event.content and event.content.parts:
+                        for part in event.content.parts:
+                            if part.text:
+                                stdout += part.text
+                
+                # Extract JSON block
+                json_start = stdout.find("{")
+                json_end = stdout.rfind("}") + 1
+                if json_start != -1 and json_end != 0:
+                    try:
+                        temp_parsed = json.loads(stdout[json_start:json_end])
+                        if "has_salary" in temp_parsed:
+                            parsed = temp_parsed
+                            break
+                        else:
+                            raise ValueError("Missing 'has_salary' field in response JSON.")
+                    except Exception as err:
+                        error_msg = str(err)
+                else:
+                    error_msg = "No JSON block found in output."
+                
+                if attempt < MAX_RETRIES:
+                    print(f"[{idx}/{total}] Attempt {attempt + 1} failed for {job['title']} salary check: {error_msg}. Retrying with self-correction...")
+                    corrective_text = (
+                        f"Your previous response was invalid. Error details: {error_msg}\n"
+                        f"Please analyze the job listing and output ONLY a valid JSON object matching this schema exactly:\n"
+                        f"{{\n"
+                        f"  \"has_salary\": true,\n"
+                        f"  \"min_salary_usd\": 120000.0,\n"
+                        f"  \"max_salary_usd\": 160000.0,\n"
+                        f"  \"explanation\": \"Summarizing sentence explaining the decision.\"\n"
+                        f"}}\n"
+                        f"Ensure only the JSON is returned, and all braces are properly closed."
+                    )
+                    content = types.Content(
+                        role="user",
+                        parts=[types.Part.from_text(text=corrective_text)]
+                    )
+                else:
+                    print(f"[{idx}/{total}] All {MAX_RETRIES + 1} attempts failed for {job['title']} salary check: {error_msg}")
+            
+            if parsed is not None:
+                has_salary = parsed.get("has_salary", False)
+                max_salary = parsed.get("max_salary_usd", 0.0)
+                min_salary = parsed.get("min_salary_usd", 0.0)
+                
+                passed = has_salary and max_salary >= min_salary_threshold
+                
+                if not has_salary:
+                    reason = "No salary range or pay range is listed in the posting."
+                elif not passed:
+                    reason = f"Salary max ({max_salary}) is below the required ${min_salary_threshold:,} threshold. (Range: {min_salary}-{max_salary})"
+                else:
+                    reason = f"Salary matches threshold: max {max_salary} meets or exceeds ${min_salary_threshold:,}. (Range: {min_salary}-{max_salary})"
+                
                 print(f"[{idx}/{total}] Salary filter result for {job['title']}: {'PASSED' if passed else 'FAILED'} - {reason}")
                 return job, passed
             else:
-                print(f"[{idx}/{total}] Error parsing filter output for {job['title']}: raw output: {stdout}")
+                print(f"[{idx}/{total}] Failed to retrieve valid salary JSON for {job['title']} after retries.")
                 return job, False
         except Exception as e:
             print(f"[{idx}/{total}] Error filtering job {job['title']}: {e}")
             return job, False
 
-async def run_matching_pipeline(resume_text: str, jobs: list[dict], model_name: str, max_eval: int):
+async def run_matching_pipeline(
+    resume_text: str,
+    jobs: list[dict],
+    model_name: str,
+    max_eval: int,
+    min_salary: int,
+    concurrency: int,
+    desc_limit: int
+):
     """Filters matching jobs by salary, then evaluates the passed ones using the ats-scoring skill."""
     code_executor = UnsafeLocalCodeExecutor()
     
@@ -626,7 +584,7 @@ async def run_matching_pipeline(resume_text: str, jobs: list[dict], model_name: 
     exclude_toolset = SkillToolset(registry=skill_registry, code_executor=code_executor)
     run_exclude_tool = RunSkillScriptTool(exclude_toolset)
     
-    semaphore = asyncio.Semaphore(3)
+    semaphore = asyncio.Semaphore(concurrency)
     exclude_tasks = []
     total_jobs = len(jobs)
     print(f"Running employer exclusion check on all {total_jobs} matching jobs using ADK 'excluding-employers' skill...")
@@ -647,18 +605,15 @@ async def run_matching_pipeline(resume_text: str, jobs: list[dict], model_name: 
     if not kept_jobs:
         return []
         
-    # 1. Salary Filtering Phase
-    filter_toolset = SkillToolset(registry=skill_registry, code_executor=code_executor)
-    run_filter_tool = RunSkillScriptTool(filter_toolset)
-    
+    # 1. Salary Filtering Phase (In-process agent execution)
     filter_tasks = []
     total_kept = len(kept_jobs)
-    print(f"Running salary filter on all {total_kept} matching jobs using ADK 'filtering-bad-jobs' skill...")
+    print(f"Running salary filter on all {total_kept} matching jobs (threshold: ${min_salary:,}, concurrency: {concurrency}) using ADK 'filtering-bad-jobs' skill...")
     
     for i, job in enumerate(kept_jobs):
         task = asyncio.create_task(
             filter_job_via_skill(
-                run_filter_tool, job, i + 1, total_kept, model_name, semaphore
+                job, i + 1, total_kept, model_name, semaphore, min_salary, desc_limit
             )
         )
         filter_tasks.append(task)
@@ -666,15 +621,12 @@ async def run_matching_pipeline(resume_text: str, jobs: list[dict], model_name: 
     filter_results = await asyncio.gather(*filter_tasks)
     passed_jobs = [job for job, passed in filter_results if passed]
     
-    print(f"Salary filter completed. {len(passed_jobs)} out of {total_kept} jobs passed the $150k+ salary requirement.")
+    print(f"Salary filter completed. {len(passed_jobs)} out of {total_kept} jobs passed the ${min_salary:,}+ salary requirement.")
     
     if not passed_jobs:
         return []
         
-    # 2. ATS Scoring Phase
-    score_toolset = SkillToolset(registry=skill_registry, code_executor=code_executor)
-    run_score_tool = RunSkillScriptTool(score_toolset)
-    
+    # 2. ATS Scoring Phase (In-process agent execution)
     score_tasks = []
     total_eval = min(len(passed_jobs), max_eval)
     print(f"Starting evaluations for the first {total_eval} qualified jobs (max limit is {max_eval}) using ADK skills...")
@@ -682,7 +634,7 @@ async def run_matching_pipeline(resume_text: str, jobs: list[dict], model_name: 
     for i, job in enumerate(passed_jobs[:total_eval]):
         task = asyncio.create_task(
             evaluate_single_job_via_skill(
-                run_score_tool, resume_text, job, i + 1, total_eval, model_name, semaphore
+                resume_text, job, i + 1, total_eval, model_name, semaphore, desc_limit
             )
         )
         score_tasks.append(task)
@@ -690,7 +642,15 @@ async def run_matching_pipeline(resume_text: str, jobs: list[dict], model_name: 
     rated_jobs = await asyncio.gather(*score_tasks)
     return rated_jobs
 
-async def run_pipeline(resume_path: str, job_titles_str: str, model_name: str, max_eval: int):
+async def run_pipeline(
+    resume_path: str,
+    job_titles_str: str,
+    model_name: str,
+    max_eval: int,
+    min_salary: int = 150000,
+    concurrency: int = 3,
+    desc_limit: int = 10000
+):
     """Orchestrates the entire PDF parsing, Job Crawling, Scoring, and Reporting workflow."""
     # 1. Parse Resume using the pdf-parsing skill via ADK RunSkillScriptTool
     print(f"Parsing resume via ADK 'pdf-parsing' skill...")
@@ -721,12 +681,16 @@ async def run_pipeline(resume_path: str, job_titles_str: str, model_name: str, m
         print(f"Critical Error parsing resume: {e}")
         sys.exit(1)
         
-    # 2. Fetch Job Boards
-    wwr_jobs = fetch_weworkremotely_jobs()
-    remotive_jobs = fetch_remotive_jobs()
-    arbeitnow_jobs = fetch_arbeitnow_jobs()
-    themuse_jobs = fetch_themuse_jobs()
-    jsearch_jobs = await fetch_jsearch_jobs_via_skill(job_titles_str)
+    # 2. Fetch Job Boards via Decoupled Ingestion
+    wwr_jobs = ingestion.fetch_weworkremotely_jobs()
+    remotive_jobs = ingestion.fetch_remotive_jobs()
+    arbeitnow_jobs = ingestion.fetch_arbeitnow_jobs()
+    themuse_jobs = ingestion.fetch_themuse_jobs()
+    jsearch_jobs = await ingestion.fetch_jsearch_jobs_via_skill(
+        job_titles_str=job_titles_str,
+        skill_registry=skill_registry,
+        tool_context=tool_context
+    )
     all_jobs = wwr_jobs + remotive_jobs + arbeitnow_jobs + themuse_jobs + jsearch_jobs
     
     if not all_jobs:
@@ -743,7 +707,10 @@ async def run_pipeline(resume_path: str, job_titles_str: str, model_name: str, m
             resume_text=resume_text,
             jobs=filtered_jobs,
             model_name=model_name,
-            max_eval=max_eval
+            max_eval=max_eval,
+            min_salary=min_salary,
+            concurrency=concurrency,
+            desc_limit=desc_limit
         )
     except Exception as e:
         print(f"Critical Error in rating pipeline: {e}")
