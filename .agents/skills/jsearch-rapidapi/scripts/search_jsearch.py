@@ -33,31 +33,53 @@ def main():
         return
 
     # Call JSearch Search endpoint
-    url = f"https://{api_host}/search"
+    url = f"https://{api_host}/search-v2"
     headers = {
         "User-Agent": "Mozilla/5.0",
         "X-RapidAPI-Key": api_key,
         "X-RapidAPI-Host": api_host
     }
-    params = {
-        "query": args.query,
-        "page": str(args.page),
-        "num_pages": str(args.num_pages)
-    }
 
     try:
-        r = requests.get(url, headers=headers, params=params, timeout=15)
-        r.raise_for_status()
+        raw_jobs = []
+        current_cursor = None
         
-        response_json = r.json()
-        if response_json.get("status") == "ERROR":
-            error_info = response_json.get("error", {})
-            error_msg = error_info.get("message") or "Unknown JSearch API error"
-            sys.stderr.write(f"JSearch API returned error status: {error_msg}\n")
-            print(json.dumps([]))
-            return
+        # Fetch page by page up to num_pages
+        for p in range(args.num_pages):
+            params = {}
+            if current_cursor:
+                params["cursor"] = current_cursor
+            else:
+                params["query"] = args.query
+                
+            r = requests.get(url, headers=headers, params=params, timeout=15)
+            r.raise_for_status()
             
-        raw_jobs = response_json.get("data", [])
+            response_json = r.json()
+            if response_json.get("status") == "ERROR":
+                error_info = response_json.get("error", {})
+                error_msg = error_info.get("message") or "Unknown JSearch API error"
+                sys.stderr.write(f"JSearch API returned error status: {error_msg}\n")
+                break
+                
+            data_obj = response_json.get("data")
+            if isinstance(data_obj, dict):
+                page_jobs = data_obj.get("jobs", [])
+                current_cursor = data_obj.get("cursor")
+            elif isinstance(data_obj, list):
+                page_jobs = data_obj
+                current_cursor = None
+            else:
+                page_jobs = []
+                current_cursor = None
+                
+            if not page_jobs:
+                break
+                
+            raw_jobs.extend(page_jobs)
+            if not current_cursor:
+                break
+
         normalized_jobs = []
         for job in raw_jobs:
             title = job.get("job_title") or "JSearch Job"
