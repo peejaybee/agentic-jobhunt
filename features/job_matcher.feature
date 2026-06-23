@@ -12,7 +12,7 @@ Feature: Remote Job Matching and Resume Scoring
     Given the remote job feeds have listings:
       | Title             | Company     | Source            | Salary Range        |
       | Python Developer  | Tech Corp   | We Work Remotely  | $160,000 - $180,000 |
-      | QA Engineer       | Test Labs   | Remotive          | $110,000 - $130,000 |
+      | QA Engineer       | Test Labs   | Remotive          | $90,000 - $115,000  |
       | Software Engineer | Dev Shop    | Arbeitnow         | Not Specified       |
       | ML Engineer       | AI Labs     | The Muse          | $130,000 - $145,000 |
     When I run the matching agent with query "Python, ML", max eval 2, min salary 120000, concurrency 2, and description limit 4000
