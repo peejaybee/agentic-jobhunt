@@ -125,7 +125,8 @@ if hasattr(sys.stderr, "reconfigure"):
 
 
 # Import ADK modules needed for orchestration
-from google.adk.skills import load_skill_from_dir
+from google.adk.skills import load_skill_from_dir, list_skills_in_dir
+from google.adk.skills.skill_registry import SkillRegistry
 from google.adk.tools.skill_toolset import SkillToolset, RunSkillScriptTool
 from google.adk.code_executors.unsafe_local_code_executor import UnsafeLocalCodeExecutor
 from dashboard_template import HTML_TEMPLATE, JOB_CARD_TEMPLATE, NO_MATCHES_TEMPLATE
@@ -133,12 +134,33 @@ from dashboard_template import HTML_TEMPLATE, JOB_CARD_TEMPLATE, NO_MATCHES_TEMP
 # Resolve paths to the custom skills
 workspace_root = os.path.dirname(os.path.abspath(__file__))
 
-# Load the skills dynamically
-pdf_skill = load_skill_from_dir(os.path.join(workspace_root, ".agents", "skills", "pdf-parsing"))
-score_skill = load_skill_from_dir(os.path.join(workspace_root, ".agents", "skills", "ats-scoring"))
-filter_skill = load_skill_from_dir(os.path.join(workspace_root, ".agents", "skills", "filtering-bad-jobs"))
-jsearch_skill = load_skill_from_dir(os.path.join(workspace_root, ".agents", "skills", "jsearch-rapidapi"))
-exclude_skill = load_skill_from_dir(os.path.join(workspace_root, ".agents", "skills", "excluding-employers"))
+class LocalSkillRegistry(SkillRegistry):
+    """Registry to load skills dynamically from the local filesystem on-demand (progressive disclosure)."""
+    def __init__(self, skills_dir: str):
+        self.skills_dir = os.path.abspath(skills_dir)
+        self._skills_metadata = {}
+        try:
+            self._skills_metadata = list_skills_in_dir(self.skills_dir)
+        except Exception:
+            pass
+
+    async def get_skill(self, *, name: str):
+        skill_path = os.path.join(self.skills_dir, name)
+        if not os.path.isdir(skill_path):
+            raise FileNotFoundError(f"Skill '{name}' not found at '{skill_path}'")
+        return load_skill_from_dir(skill_path)
+
+    async def search_skills(self, *, query: str):
+        results = []
+        query_lower = query.lower()
+        for name, fm in self._skills_metadata.items():
+            if query_lower in name.lower() or query_lower in fm.description.lower():
+                results.append(fm)
+        return results
+
+# Initialize the local registry for progressive disclosure
+skills_directory = os.path.join(workspace_root, ".agents", "skills")
+skill_registry = LocalSkillRegistry(skills_directory)
 
 # Set up dummy tool context for running ADK tools programmatically
 class DummyInvocationContext:
@@ -329,7 +351,7 @@ async def fetch_jsearch_jobs_via_skill(job_titles_str: str) -> list[dict]:
     print("Fetching jobs from JSearch API via ADK skill...")
     try:
         code_executor = UnsafeLocalCodeExecutor()
-        toolset = SkillToolset(skills=[jsearch_skill], code_executor=code_executor)
+        toolset = SkillToolset(registry=skill_registry, code_executor=code_executor)
         run_skill_script_tool = RunSkillScriptTool(toolset)
         
         # Use the first job title search query as the query for JSearch
@@ -621,7 +643,7 @@ async def run_matching_pipeline(resume_text: str, jobs: list[dict], model_name: 
     code_executor = UnsafeLocalCodeExecutor()
     
     # 0. Employer Exclusion Phase
-    exclude_toolset = SkillToolset(skills=[exclude_skill], code_executor=code_executor)
+    exclude_toolset = SkillToolset(registry=skill_registry, code_executor=code_executor)
     run_exclude_tool = RunSkillScriptTool(exclude_toolset)
     
     semaphore = asyncio.Semaphore(3)
@@ -646,7 +668,7 @@ async def run_matching_pipeline(resume_text: str, jobs: list[dict], model_name: 
         return []
         
     # 1. Salary Filtering Phase
-    filter_toolset = SkillToolset(skills=[filter_skill], code_executor=code_executor)
+    filter_toolset = SkillToolset(registry=skill_registry, code_executor=code_executor)
     run_filter_tool = RunSkillScriptTool(filter_toolset)
     
     filter_tasks = []
@@ -670,7 +692,7 @@ async def run_matching_pipeline(resume_text: str, jobs: list[dict], model_name: 
         return []
         
     # 2. ATS Scoring Phase
-    score_toolset = SkillToolset(skills=[score_skill], code_executor=code_executor)
+    score_toolset = SkillToolset(registry=skill_registry, code_executor=code_executor)
     run_score_tool = RunSkillScriptTool(score_toolset)
     
     score_tasks = []
@@ -694,7 +716,7 @@ async def run_pipeline(resume_path: str, job_titles_str: str, model_name: str, m
     print(f"Parsing resume via ADK 'pdf-parsing' skill...")
     try:
         code_executor = UnsafeLocalCodeExecutor()
-        toolset = SkillToolset(skills=[pdf_skill], code_executor=code_executor)
+        toolset = SkillToolset(registry=skill_registry, code_executor=code_executor)
         run_skill_script_tool = RunSkillScriptTool(toolset)
         
         res = await run_skill_script_tool.run_async(
