@@ -26,3 +26,8 @@ These rules apply to any agentic AI assistants working on the `agentic-jobhunt` 
 
 ## 4. Input Truncation & GPU Guardrails
 * **Requirement**: When passing third-party job descriptions or resume text to local LLMs, always apply proactive character truncation (e.g. `[:desc_limit]`) to protect GPU memory and prevent context window overflow or attention loss.
+
+---
+
+## 5. Automated Testing Permission
+* **Pre-Approval**: Running the BDD tests using the command `python -m behave` is always pre-approved by the user. You may execute this command at any time during development or verification without requesting explicit confirmation.

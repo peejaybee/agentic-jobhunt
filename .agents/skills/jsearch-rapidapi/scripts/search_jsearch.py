@@ -52,8 +52,21 @@ def main():
             else:
                 params["query"] = args.query
                 
-            r = requests.get(url, headers=headers, params=params, timeout=15)
-            r.raise_for_status()
+            # Retry mechanism for transient network timeouts
+            MAX_RETRIES = 3
+            TIMEOUT = 30
+            r = None
+            for attempt in range(MAX_RETRIES):
+                try:
+                    r = requests.get(url, headers=headers, params=params, timeout=TIMEOUT)
+                    r.raise_for_status()
+                    break  # Success!
+                except (requests.exceptions.RequestException, requests.exceptions.Timeout) as req_err:
+                    if attempt == MAX_RETRIES - 1:
+                        raise req_err  # Re-raise the error if all retries failed
+                    import time
+                    sys.stderr.write(f"JSearch API request attempt {attempt + 1} failed: {req_err}. Retrying in {2 ** attempt}s...\n")
+                    time.sleep(2 ** attempt)
             
             response_json = r.json()
             if response_json.get("status") == "ERROR":

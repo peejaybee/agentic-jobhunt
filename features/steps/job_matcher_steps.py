@@ -267,6 +267,7 @@ def execute_pipeline(context, query, max_eval, min_salary, concurrency, desc_lim
     context.used_min_salary = min_salary
     context.used_concurrency = concurrency
     context.used_desc_limit = desc_limit
+    context.evaluated_jobs = []
 
     wwr_list = getattr(context, 'wwr_jobs', [])
     remotive_list = getattr(context, 'remotive_jobs', [])
