@@ -4,6 +4,7 @@ import sys
 import json
 import datetime
 import requests
+import time
 from dotenv import load_dotenv
 
 def main():
@@ -64,7 +65,6 @@ def main():
                 except (requests.exceptions.RequestException, requests.exceptions.Timeout) as req_err:
                     if attempt == MAX_RETRIES - 1:
                         raise req_err  # Re-raise the error if all retries failed
-                    import time
                     sys.stderr.write(f"JSearch API request attempt {attempt + 1} failed: {req_err}. Retrying in {2 ** attempt}s...\n")
                     time.sleep(2 ** attempt)
             
