@@ -4,8 +4,8 @@ import sys
 import json
 
 def main():
-    parser = argparse.ArgumentParser(description="Check if an employer is on the exclusion list")
-    parser.add_argument("--company_name", required=True, help="Name of the company/employer to check")
+    parser = argparse.ArgumentParser(description="Check if employers are on the exclusion list")
+    parser.add_argument("--companies", nargs="+", required=True, help="List of companies/employers to check")
     parser.add_argument("--file_path", default="excluded_employers.txt", help="Path to the excluded employers text file")
     args = parser.parse_args()
 
@@ -18,10 +18,8 @@ def main():
     else:
         file_path = args.file_path
 
-    excluded = False
-    reason = "Company is not in the exclusion list."
-    company_name_lower = args.company_name.strip().lower()
-
+    # Read exclusion rules once
+    rules = []
     if not os.path.exists(file_path):
         # If the file does not exist, log to stderr and default to not excluded
         sys.stderr.write(f"Warning: Exclusion file not found at: {file_path}. Skipping checks.\n")
@@ -32,20 +30,30 @@ def main():
                     item = line.strip()
                     if not item or item.startswith("#"):
                         continue
-                    item_lower = item.lower()
-                    
-                    # Case-insensitive substring match both ways to catch variations
-                    if item_lower in company_name_lower or company_name_lower in item_lower:
-                        excluded = True
-                        reason = f"Company '{args.company_name}' is excluded by rule matching '{item}'."
-                        break
+                    rules.append(item)
         except Exception as e:
             sys.stderr.write(f"Error reading exclusion file: {e}\n")
 
-    print(json.dumps({
-        "excluded": excluded,
-        "reason": reason
-    }))
+    results = {}
+    for company in args.companies:
+        excluded = False
+        reason = "Company is not in the exclusion list."
+        company_lower = company.strip().lower()
+
+        for rule in rules:
+            rule_lower = rule.lower()
+            # Case-insensitive substring match both ways to catch variations
+            if rule_lower in company_lower or company_lower in rule_lower:
+                excluded = True
+                reason = f"Company '{company}' is excluded by rule matching '{rule}'."
+                break
+        
+        results[company] = {
+            "excluded": excluded,
+            "reason": reason
+        }
+
+    print(json.dumps(results))
 
 if __name__ == "__main__":
     main()

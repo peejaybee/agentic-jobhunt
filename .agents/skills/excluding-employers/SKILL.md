@@ -9,16 +9,16 @@ metadata:
 
 # Excluding Employers Skill
 
-This skill reads a list of excluded employers from a text file and checks if a given company/employer name matches any entries in the list.
+This skill reads a list of excluded employers from a text file and checks if a given list of company/employer names matches any entries in the list.
 
 ## Scripts
-- **`scripts/exclude_employers.py`**: A CLI script to check if an employer is excluded.
+- **`scripts/exclude_employers.py`**: A CLI script to check if multiple employers are excluded.
   - Arguments:
-    - `--company_name`: The company/employer name of the job listing.
+    - `--companies`: A space-separated list of company/employer names of the job listings.
     - `--file_path`: Path to the text file containing the excluded employers (default: `excluded_employers.txt` at workspace root).
-  - Output: Prints a JSON object to stdout containing:
-    - `excluded`: Boolean (True if the employer is excluded, False otherwise).
-    - `reason`: A brief explanation of the decision.
+  - Output: Prints a JSON object to stdout containing a mapping of company names to their exclusion results:
+    - Each key is the company name.
+    - The value is an object containing `excluded` (Boolean) and `reason` (String).
 
 ## Usage
 Run the script using `run_skill_script`:
@@ -27,7 +27,7 @@ Run the script using `run_skill_script`:
   "skill_name": "excluding-employers",
   "file_path": "scripts/exclude_employers.py",
   "args": {
-    "--company_name": "Lemon.io",
+    "--companies": ["Lemon.io", "Google"],
     "--file_path": "excluded_employers.txt"
   }
 }

@@ -197,50 +197,61 @@ class DummyToolContext:
 tool_context = DummyToolContext()
 # Fetch functions moved to ingestion.py
 
-async def check_exclusion_via_skill(
+async def filter_excluded_employers_via_skill(
     run_exclude_tool: RunSkillScriptTool,
-    job: dict,
-    idx: int,
-    total: int,
-    semaphore: asyncio.Semaphore
-) -> tuple[dict, bool]:
-    """Checks if a job's employer is excluded using the excluding-employers skill."""
-    async with semaphore:
-        company_name = job.get("company_name", "")
-        try:
-            res = await run_exclude_tool.run_async(
-                args={
-                    "skill_name": "excluding-employers",
-                    "file_path": "scripts/exclude_employers.py",
-                    "args": [
-                        "--company_name", company_name,
-                        "--file_path", os.path.abspath(os.path.join(workspace_root, "excluded_employers.txt"))
-                    ]
-                },
-                tool_context=tool_context
-            )
+    jobs: list[dict]
+) -> list[dict]:
+    """Filters a list of jobs by calling the excluding-employers skill in a single batch."""
+    if not jobs:
+        return []
+
+    # Collect unique non-empty company names
+    unique_companies = sorted(list({job.get("company_name", "").strip() for job in jobs if job.get("company_name", "").strip()}))
+    
+    if not unique_companies:
+        return jobs
+
+    try:
+        res = await run_exclude_tool.run_async(
+            args={
+                "skill_name": "excluding-employers",
+                "file_path": "scripts/exclude_employers.py",
+                "args": [
+                    "--companies", *unique_companies,
+                    "--file_path", os.path.abspath(os.path.join(workspace_root, "excluded_employers.txt"))
+                ]
+            },
+            tool_context=tool_context
+        )
+        
+        if res.get("status") != "success" or res.get("error"):
+            error_msg = res.get("error") or res.get("stderr") or "Unknown error"
+            print(f"Warning: Exclusion skill failed: {error_msg}")
+            return jobs
             
-            if res.get("status") != "success" or res.get("error"):
-                error_msg = res.get("error") or res.get("stderr") or "Unknown error"
-                print(f"Warning: Exclusion skill failed for {company_name}: {error_msg}")
-                return job, False
-                
-            stdout = res.get("stdout", "").strip()
-            
-            json_start = stdout.find("{")
-            json_end = stdout.rfind("}") + 1
-            if json_start != -1 and json_end != 0:
-                parsed = json.loads(stdout[json_start:json_end])
-                excluded = parsed.get("excluded", False)
-                reason = parsed.get("reason", "")
+        stdout = res.get("stdout", "").strip()
+        
+        json_start = stdout.find("{")
+        json_end = stdout.rfind("}") + 1
+        if json_start != -1 and json_end != 0:
+            parsed = json.loads(stdout[json_start:json_end])
+            kept_jobs = []
+            for job in jobs:
+                company_name = job.get("company_name", "").strip()
+                comp_res = parsed.get(company_name, {})
+                excluded = comp_res.get("excluded", False)
+                reason = comp_res.get("reason", "")
                 if excluded:
-                    print(f"[{idx}/{total}] Employer filter: EXCLUDED {company_name} - {reason}")
-                return job, excluded
-            else:
-                return job, False
-        except Exception as e:
-            print(f"[{idx}/{total}] Error running exclusion filter for {company_name}: {e}")
-            return job, False
+                    print(f"Employer filter: EXCLUDED {company_name} - {reason}")
+                else:
+                    kept_jobs.append(job)
+            return kept_jobs
+        else:
+            print("Warning: Exclusion skill output did not contain valid JSON.")
+            return jobs
+    except Exception as e:
+        print(f"Error running batch exclusion filter: {e}")
+        return jobs
 
 
 
@@ -648,26 +659,16 @@ async def run_matching_pipeline(
 ):
     """Filters matching jobs by salary, then evaluates the passed ones using the ats-scoring skill."""
     code_executor = UnsafeLocalCodeExecutor()
+    semaphore = asyncio.Semaphore(concurrency)
     
     # 0. Employer Exclusion Phase
     exclude_toolset = SkillToolset(registry=skill_registry, code_executor=code_executor)
     run_exclude_tool = RunSkillScriptTool(exclude_toolset)
     
-    semaphore = asyncio.Semaphore(concurrency)
-    exclude_tasks = []
     total_jobs = len(jobs)
     print(f"Running employer exclusion check on all {total_jobs} matching jobs using ADK 'excluding-employers' skill...")
     
-    for i, job in enumerate(jobs):
-        task = asyncio.create_task(
-            check_exclusion_via_skill(
-                run_exclude_tool, job, i + 1, total_jobs, semaphore
-            )
-        )
-        exclude_tasks.append(task)
-        
-    exclude_results = await asyncio.gather(*exclude_tasks)
-    kept_jobs = [job for job, excluded in exclude_results if not excluded]
+    kept_jobs = await filter_excluded_employers_via_skill(run_exclude_tool, jobs)
     
     print(f"Employer filter completed. {len(kept_jobs)} out of {total_jobs} jobs kept.")
     

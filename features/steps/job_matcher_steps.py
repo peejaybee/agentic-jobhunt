@@ -1,6 +1,7 @@
 import sys
 import os
 import asyncio
+import json
 from unittest.mock import patch, MagicMock
 from behave import given, when, then
 
@@ -326,16 +327,22 @@ def execute_pipeline(context, query, max_eval, min_salary, concurrency, desc_lim
             return {"status": "success", "stdout": context.resume_text}
         elif skill_name == "excluding-employers":
             cmd_args = args.get("args", [])
-            company_name = ""
-            if "--company_name" in cmd_args:
-                idx = cmd_args.index("--company_name")
-                company_name = cmd_args[idx + 1]
+            companies = []
+            if "--companies" in cmd_args:
+                idx = cmd_args.index("--companies")
+                for arg in cmd_args[idx + 1:]:
+                    if arg.startswith("--"):
+                        break
+                    companies.append(arg)
             
-            # Standard exclusion check mock
-            if company_name.lower() == "lemon.io":
-                return {"status": "success", "stdout": '{"excluded": true, "reason": "Lemon.io matches excluded list"}'}
-            else:
-                return {"status": "success", "stdout": '{"excluded": false, "reason": "No match"}'}
+            results = {}
+            for company in companies:
+                if company.lower() == "lemon.io":
+                    results[company] = {"excluded": True, "reason": "Lemon.io matches excluded list"}
+                else:
+                    results[company] = {"excluded": False, "reason": "No match"}
+            
+            return {"status": "success", "stdout": json.dumps(results)}
         return {"status": "success", "stdout": ""}
 
     with patch('ingestion.fetch_weworkremotely_jobs', mock_fetch_wwr), \
@@ -367,17 +374,16 @@ def execute_pipeline(context, query, max_eval, min_salary, concurrency, desc_lim
                 context.passed_jobs.append(res_job)
             return res_job, passed
 
-        original_check_exclusion_via_skill = orchestrator.check_exclusion_via_skill
+        original_filter_excluded_employers_via_skill = orchestrator.filter_excluded_employers_via_skill
         context.kept_jobs = []
-        async def hook_check_exclusion_via_skill(run_exclude_tool, job, idx, total, semaphore):
-            res_job, excluded = await original_check_exclusion_via_skill(run_exclude_tool, job, idx, total, semaphore)
-            if not excluded:
-                context.kept_jobs.append(res_job)
-            return res_job, excluded
+        async def hook_filter_excluded_employers_via_skill(run_exclude_tool, jobs):
+            res_jobs = await original_filter_excluded_employers_via_skill(run_exclude_tool, jobs)
+            context.kept_jobs = res_jobs
+            return res_jobs
 
         with patch('orchestrator.run_matching_pipeline', hook_run_matching_pipeline), \
              patch('orchestrator.filter_job_via_skill', hook_filter_job_via_skill), \
-             patch('orchestrator.check_exclusion_via_skill', hook_check_exclusion_via_skill):
+             patch('orchestrator.filter_excluded_employers_via_skill', hook_filter_excluded_employers_via_skill):
             
             loop.run_until_complete(
                 orchestrator.run_pipeline(
