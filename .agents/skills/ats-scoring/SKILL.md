@@ -20,6 +20,7 @@ Analyze the candidate's resume against the provided job description and evaluate
    - **50-79**: Moderate fit (matches some tech stack, minor gaps in experience or peripheral tools)
    - **0-49**: Poor fit (lacks core technologies or has major level mismatch)
 3. **Explanation**: Provide a brief paragraph (2-3 sentences) summarizing key matches and critical skill gaps.
+4. **Attribution Isolation**: Do not assume the candidate possesses experience in a specific region, tool, or industry sector simply because it is listed in the job description. All candidate experience must be verified exclusively from the provided resume text.
 
 ## Expected Output Format
 You MUST return your final response strictly as a JSON object matching this schema:
