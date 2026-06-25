@@ -172,6 +172,22 @@ class LocalSkillRegistry(SkillRegistry):
 skills_directory = os.path.join(workspace_root, ".agents", "skills")
 skill_registry = LocalSkillRegistry(skills_directory)
 
+def load_excluded_keywords(file_path: str) -> list[str]:
+    """Reads a list of excluded keywords/phrases from a text file, ignoring comments and empty lines."""
+    keywords = []
+    if not os.path.exists(file_path):
+        return keywords
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            for line in f:
+                item = line.strip()
+                if not item or item.startswith("#"):
+                    continue
+                keywords.append(item.lower())
+    except Exception as e:
+        print(f"Warning: Error reading excluded keywords: {e}")
+    return keywords
+
 # Set up dummy tool context for running ADK tools programmatically
 class DummyInvocationContext:
     def __init__(self):
@@ -772,11 +788,34 @@ async def run_pipeline(
         print("No jobs fetched from any job boards. Exiting.")
         sys.exit(1)
         
+    # Load excluded keywords/phrases
+    keywords_file = os.path.abspath(os.path.join(workspace_root, "excluded_keywords.txt"))
+    excluded_keywords = load_excluded_keywords(keywords_file)
+    
     # 3. Filter Jobs
     query_titles = [t.strip() for t in job_titles_str.split(",") if t.strip()]
     print(f"Filtering jobs matching titles: {query_titles}")
-    filtered_jobs = [job for job in all_jobs if is_job_match(job, query_titles)]
-    print(f"Found {len(filtered_jobs)} matching jobs out of {len(all_jobs)} total listings.")
+    matching_jobs = [job for job in all_jobs if is_job_match(job, query_titles)]
+    
+    filtered_jobs = []
+    for job in matching_jobs:
+        title_lower = job.get("title", "").lower()
+        desc_lower = job.get("description", "").lower()
+        
+        excluded_by_keyword = False
+        matching_keyword = ""
+        for kw in excluded_keywords:
+            if kw in title_lower or kw in desc_lower:
+                excluded_by_keyword = True
+                matching_keyword = kw
+                break
+                
+        if excluded_by_keyword:
+            print(f"Keyword filter: EXCLUDED {job.get('title', 'Unknown')} ({job.get('company_name', 'Unknown')}) - matches excluded keyword '{matching_keyword}'")
+        else:
+            filtered_jobs.append(job)
+            
+    print(f"Found {len(filtered_jobs)} matching jobs out of {len(all_jobs)} total listings (skipped {len(matching_jobs) - len(filtered_jobs)} via keyword exclusion).")
     
     if not filtered_jobs:
         print("No matching jobs found in feeds for the specified titles.")

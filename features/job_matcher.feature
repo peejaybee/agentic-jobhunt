@@ -47,3 +47,13 @@ Feature: Remote Job Matching and Resume Scoring
     And the agent should query the LLM again with the syntax error and corrective instructions under the same session ID
     And the agent should successfully extract the valid JSON results on a subsequent retry attempt
 
+  Scenario: Excluding jobs matching keywords in excluded_keywords.txt
+    Given my keyword exclusion file "excluded_keywords.txt" contains "ai trainer"
+    And the remote job feeds have listings:
+      | Title             | Company   | Source           | Salary Range        |
+      | Python Developer  | Tech Corp | We Work Remotely | $160,000 - $180,000 |
+      | AI Trainer        | AI Labs   | We Work Remotely | $160,000 - $180,000 |
+    When I run the matching agent with query "Python, AI"
+    Then the agent should ignore the listing "AI Trainer"
+    And only the listing "Python Developer" should be evaluated against the salary and ATS criteria
+

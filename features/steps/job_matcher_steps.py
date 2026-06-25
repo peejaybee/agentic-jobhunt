@@ -38,6 +38,12 @@ def step_impl(context):
         except Exception:
             pass
     cache.init_db()
+    for fn in ["excluded_employers.txt", "excluded_keywords.txt"]:
+        if os.path.exists(fn):
+            try:
+                os.remove(fn)
+            except Exception:
+                pass
     context.ollama_running = True
 
 @given('I have a valid PDF resume file at "{resume_path}"')
@@ -103,6 +109,12 @@ def step_impl(context, filename, employer):
     context.exclusion_file = filename
     with open(filename, "w", encoding="utf-8") as f:
         f.write(employer + "\n")
+
+@given('my keyword exclusion file "{filename}" contains "{keyword}"')
+def step_impl(context, filename, keyword):
+    context.keyword_exclusion_file = filename
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(keyword + "\n")
 
 @given('the local LLM returns a malformed JSON block on the first attempt')
 def step_impl(context):
@@ -247,6 +259,16 @@ def step_impl(context, employer):
 def step_impl(context, employer):
     kept_employers = {j["company_name"] for j in context.kept_jobs}
     assert kept_employers == {employer}, f"Kept jobs has other employers: {kept_employers}"
+
+@then('the agent should ignore the listing "{title}"')
+def step_impl(context, title):
+    kept_titles = {j["title"] for j in context.kept_jobs}
+    assert title not in kept_titles, f"Kept titles contains excluded one: {kept_titles}"
+
+@then('only the listing "{title}" should be evaluated against the salary and ATS criteria')
+def step_impl(context, title):
+    kept_titles = {j["title"] for j in context.kept_jobs}
+    assert kept_titles == {title}, f"Kept jobs has other titles: {kept_titles}"
 
 @then('the agent should detect the JSON parsing error')
 def step_impl(context):
