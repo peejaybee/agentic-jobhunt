@@ -31,3 +31,8 @@ These rules apply to any agentic AI assistants working on the `agentic-jobhunt` 
 
 ## 5. Automated Testing Permission
 * **Pre-Approval**: Running the BDD tests using the command `python -m behave` is always pre-approved by the user. You may execute this command at any time during development or verification without requesting explicit confirmation.
+
+---
+
+## 6. Git Branching & Workflows
+* **Requirement**: All development work must be performed on a Git branch named `update`. Do NOT commit directly to the `main` branch.
