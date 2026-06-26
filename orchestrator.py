@@ -228,13 +228,14 @@ async def filter_excluded_employers_via_skill(
         return jobs
 
     try:
+        file_name = "excluded_employers_test.txt" if os.environ.get("BEHAVE_TEST") == "true" else "excluded_employers.txt"
         res = await run_exclude_tool.run_async(
             args={
                 "skill_name": "excluding-employers",
                 "file_path": "scripts/exclude_employers.py",
                 "args": [
                     "--companies", *unique_companies,
-                    "--file_path", os.path.abspath(os.path.join(workspace_root, "excluded_employers.txt"))
+                    "--file_path", os.path.abspath(os.path.join(workspace_root, file_name))
                 ]
             },
             tool_context=tool_context
@@ -789,7 +790,8 @@ async def run_pipeline(
         sys.exit(1)
         
     # Load excluded keywords/phrases
-    keywords_file = os.path.abspath(os.path.join(workspace_root, "excluded_keywords.txt"))
+    file_name = "excluded_keywords_test.txt" if os.environ.get("BEHAVE_TEST") == "true" else "excluded_keywords.txt"
+    keywords_file = os.path.abspath(os.path.join(workspace_root, file_name))
     excluded_keywords = load_excluded_keywords(keywords_file)
     
     # 3. Filter Jobs

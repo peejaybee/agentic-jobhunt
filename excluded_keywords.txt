@@ -1,1 +1,12 @@
+# Excluded keywords/phrases for job titles and descriptions
 ai trainer
+ai training
+ai tutor
+annotation specialist
+data labeler
+data labeling
+llm trainer
+ai research and evaluation
+outlier.ai
+scale ai
+remotasks

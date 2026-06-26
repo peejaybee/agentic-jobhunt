@@ -38,7 +38,7 @@ def step_impl(context):
         except Exception:
             pass
     cache.init_db()
-    for fn in ["excluded_employers.txt", "excluded_keywords.txt"]:
+    for fn in ["excluded_employers_test.txt", "excluded_keywords_test.txt"]:
         if os.path.exists(fn):
             try:
                 os.remove(fn)

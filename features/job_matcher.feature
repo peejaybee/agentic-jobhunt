@@ -30,8 +30,8 @@ Feature: Remote Job Matching and Resume Scoring
     Then the agent should skip the salary evaluation and ATS scoring phases
     And a dashboard should be generated showing no job matches found
 
-  Scenario: Excluding employers listed in excluded_employers.txt
-    Given my exclusion file "excluded_employers.txt" contains "lemon.io"
+  Scenario: Excluding employers listed in excluded_employers_test.txt
+    Given my exclusion file "excluded_employers_test.txt" contains "lemon.io"
     And the remote job feeds have listings:
       | Title             | Company     | Source            | Salary Range        |
       | Python Developer  | Lemon.io    | We Work Remotely  | $160,000 - $180,000 |
@@ -47,8 +47,8 @@ Feature: Remote Job Matching and Resume Scoring
     And the agent should query the LLM again with the syntax error and corrective instructions under the same session ID
     And the agent should successfully extract the valid JSON results on a subsequent retry attempt
 
-  Scenario: Excluding jobs matching keywords in excluded_keywords.txt
-    Given my keyword exclusion file "excluded_keywords.txt" contains "ai trainer"
+  Scenario: Excluding jobs matching keywords in excluded_keywords_test.txt
+    Given my keyword exclusion file "excluded_keywords_test.txt" contains "ai trainer"
     And the remote job feeds have listings:
       | Title             | Company   | Source           | Salary Range        |
       | Python Developer  | Tech Corp | We Work Remotely | $160,000 - $180,000 |
