@@ -165,7 +165,7 @@ def fetch_themuse_jobs() -> list[dict]:
         print(f"Warning: Failed to fetch The Muse jobs: {e}")
         return []
 
-async def fetch_jsearch_jobs_via_skill(job_titles_str: str, skill_registry, tool_context) -> list[dict]:
+async def fetch_jsearch_jobs_via_skill(job_titles_str: str, skill_registry, tool_context, exclude_publishers: list[str] = None) -> list[dict]:
     """Fetches jobs from JSearch API using the jsearch-rapidapi custom ADK skill."""
     print("Fetching jobs from JSearch API via ADK skill...")
     try:
@@ -177,11 +177,15 @@ async def fetch_jsearch_jobs_via_skill(job_titles_str: str, skill_registry, tool
         first_title = job_titles_str.split(",")[0].strip() if job_titles_str else "Python Developer"
         query = f"{first_title} in Remote"
         
+        args_list = ["--query", query]
+        if exclude_publishers:
+            args_list.extend(["--exclude_publishers"] + exclude_publishers)
+            
         res = await run_skill_script_tool.run_async(
             args={
                 "skill_name": "jsearch-rapidapi",
                 "file_path": "scripts/search_jsearch.py",
-                "args": ["--query", query]
+                "args": args_list
             },
             tool_context=tool_context
         )

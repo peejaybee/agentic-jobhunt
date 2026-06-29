@@ -17,6 +17,7 @@ This skill queries job postings from the JSearch endpoint on RapidAPI using envi
     - `--query`: Search query string (e.g., `"Python Developer in Remote"`).
     - `--page`: Page number to fetch (default: `1`).
     - `--num_pages`: Number of pages to retrieve (default: `1`).
+    - `--exclude_publishers`: List of space-separated publisher names to exclude from search results.
   - Environment Variables:
     - `X-RapidAPI-Key`: Your RapidAPI access key.
     - `X-RapidAPI-Host`: Your RapidAPI host (default: `"jsearch.p.rapidapi.com"`).

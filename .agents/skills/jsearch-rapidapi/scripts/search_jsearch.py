@@ -12,6 +12,7 @@ def main():
     parser.add_argument("--query", default="Python Developer in Remote", help="Search query string")
     parser.add_argument("--page", type=int, default=1, help="Page number")
     parser.add_argument("--num_pages", type=int, default=1, help="Number of pages to fetch")
+    parser.add_argument("--exclude_publishers", nargs="*", default=[], help="Job board/publisher names to exclude")
     args = parser.parse_args()
 
     # Determine script and workspace root to load the .env file robustly
@@ -52,6 +53,8 @@ def main():
                 params["cursor"] = current_cursor
             else:
                 params["query"] = args.query
+                if args.exclude_publishers:
+                    params["exclude_job_publisher"] = ",".join(args.exclude_publishers)
                 
             # Retry mechanism for transient network timeouts
             MAX_RETRIES = 3
@@ -95,6 +98,11 @@ def main():
 
         normalized_jobs = []
         for job in raw_jobs:
+            publisher = job.get("job_publisher") or ""
+            if args.exclude_publishers:
+                if any(expub.strip().lower() in publisher.lower() for expub in args.exclude_publishers if expub.strip()):
+                    continue
+
             title = job.get("job_title") or "JSearch Job"
             company = job.get("employer_name") or "Unknown"
             desc = job.get("job_description") or ""
@@ -110,7 +118,7 @@ def main():
             category = job.get("job_employment_type") or "Remote Job"
             
             normalized_jobs.append({
-                "source": "JSearch (via RapidAPI)",
+                "source": f"JSearch ({publisher})" if publisher else "JSearch (via RapidAPI)",
                 "title": title,
                 "company_name": company,
                 "description": desc,

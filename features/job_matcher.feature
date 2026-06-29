@@ -57,3 +57,13 @@ Feature: Remote Job Matching and Resume Scoring
     Then the agent should ignore the listing "AI Trainer"
     And only the listing "Python Developer" should be evaluated against the salary and ATS criteria
 
+  Scenario: Excluding jobs from publishers listed in excluded_publishers_test.txt
+    Given my publisher exclusion file "excluded_publishers_test.txt" contains "Upwork"
+    And the remote job feeds have listings:
+      | Title             | Company    | Source  | Publisher | Salary Range        |
+      | Python Developer  | Tech Corp  | JSearch | LinkedIn  | $160,000 - $180,000 |
+      | Python Developer  | Other Corp | JSearch | Upwork    | $160,000 - $180,000 |
+    When I run the matching agent with query "Python"
+    Then the agent should ignore the listing from "Other Corp"
+    And only the listing from "Tech Corp" should be evaluated against the salary and ATS criteria
+

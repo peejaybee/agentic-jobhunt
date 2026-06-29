@@ -188,6 +188,22 @@ def load_excluded_keywords(file_path: str) -> list[str]:
         print(f"Warning: Error reading excluded keywords: {e}")
     return keywords
 
+def load_excluded_publishers(file_path: str) -> list[str]:
+    """Reads a list of excluded job boards/publishers from a text file, ignoring comments and empty lines."""
+    publishers = []
+    if not os.path.exists(file_path):
+        return publishers
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            for line in f:
+                item = line.strip()
+                if not item or item.startswith("#"):
+                    continue
+                publishers.append(item)
+    except Exception as e:
+        print(f"Warning: Error reading excluded publishers: {e}")
+    return publishers
+
 # Set up dummy tool context for running ADK tools programmatically
 class DummyInvocationContext:
     def __init__(self):
@@ -770,6 +786,12 @@ async def run_pipeline(
         
     # 2. Fetch Job Boards via Decoupled Ingestion concurrently
     print("Starting concurrent data ingestion from job feeds...")
+    
+    # Load excluded job boards/publishers for JSearch API filtering
+    pub_file_name = "excluded_publishers_test.txt" if os.environ.get("BEHAVE_TEST") == "true" else "excluded_publishers.txt"
+    publishers_file = os.path.abspath(os.path.join(workspace_root, pub_file_name))
+    excluded_publishers = load_excluded_publishers(publishers_file)
+    
     wwr_task = asyncio.create_task(asyncio.to_thread(ingestion.fetch_weworkremotely_jobs))
     remotive_task = asyncio.create_task(asyncio.to_thread(ingestion.fetch_remotive_jobs))
     arbeitnow_task = asyncio.create_task(asyncio.to_thread(ingestion.fetch_arbeitnow_jobs))
@@ -777,7 +799,8 @@ async def run_pipeline(
     jsearch_task = asyncio.create_task(ingestion.fetch_jsearch_jobs_via_skill(
         job_titles_str=job_titles_str,
         skill_registry=skill_registry,
-        tool_context=tool_context
+        tool_context=tool_context,
+        exclude_publishers=excluded_publishers
     ))
     
     wwr_jobs, remotive_jobs, arbeitnow_jobs, themuse_jobs, jsearch_jobs = await asyncio.gather(

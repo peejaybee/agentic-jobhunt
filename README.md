@@ -85,7 +85,7 @@ python job_matcher_agent.py --resume resume.pdf --titles "Python Developer, Soft
 
 ## Exclusion Lists & Filters
 
-To filter out noise and target high-quality listings, you can customize two exclusion lists in the workspace root:
+To filter out noise and target high-quality listings, you can customize three exclusion lists in the workspace root:
 1. **`excluded_employers.txt`**: List of company names (case-insensitive substring match) to skip. For example, add `lemon.io` to exclude jobs from Lemon.io.
 2. **`excluded_keywords.txt`**: List of keywords or phrases (case-insensitive substring match). The pipeline scans both job titles and job descriptions, immediately discarding any jobs matching these terms. By default, it excludes AI training/annotation contracts:
    ```text
@@ -97,6 +97,7 @@ To filter out noise and target high-quality listings, you can customize two excl
    data labeling
    llm trainer
    ```
+3. **`excluded_publishers.txt`**: List of job boards or publishers (case-insensitive substring match) to skip from JSearch results (e.g., `Upwork`, `BeBee`, `Freelancer`). Filtering happens natively at the API level (saving JSearch API quota) and is double-checked locally.
 
 ---
 

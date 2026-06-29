@@ -38,7 +38,7 @@ def step_impl(context):
         except Exception:
             pass
     cache.init_db()
-    for fn in ["excluded_employers_test.txt", "excluded_keywords_test.txt"]:
+    for fn in ["excluded_employers_test.txt", "excluded_keywords_test.txt", "excluded_publishers_test.txt"]:
         if os.path.exists(fn):
             try:
                 os.remove(fn)
@@ -73,16 +73,19 @@ def step_impl(context):
         source = row['Source']
         salary_range = row['Salary Range']
 
+        publisher = row['Publisher'] if 'Publisher' in row.headings else ""
+
         url_safe_title = title.lower().replace(" ", "-")
         url_safe_company = company.lower().replace(" ", "-")
         job = {
             "title": title,
             "company_name": company,
             "description": f"Position for a {title} at {company}. Compensation details: {salary_range}.",
-            "source": source,
+            "source": f"JSearch ({publisher})" if (source == "JSearch" and publisher) else source,
             "url": f"https://example.com/job/{url_safe_title}-{url_safe_company}",
             "publication_date": "Tue, 23 Jun 2026 12:00:00 GMT",
-            "category": "Software Engineering"
+            "category": "Software Engineering",
+            "job_publisher": publisher
         }
 
         if source == "We Work Remotely":
@@ -115,6 +118,12 @@ def step_impl(context, filename, keyword):
     context.keyword_exclusion_file = filename
     with open(filename, "w", encoding="utf-8") as f:
         f.write(keyword + "\n")
+
+@given('my publisher exclusion file "{filename}" contains "{publisher}"')
+def step_impl(context, filename, publisher):
+    context.publisher_exclusion_file = filename
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(publisher + "\n")
 
 @given('the local LLM returns a malformed JSON block on the first attempt')
 def step_impl(context):
@@ -305,7 +314,20 @@ def execute_pipeline(context, query, max_eval, min_salary, concurrency, desc_lim
     def mock_fetch_remotive(): return remotive_list
     def mock_fetch_arbeitnow(): return arbeitnow_list
     def mock_fetch_themuse(): return themuse_list
-    async def mock_fetch_jsearch(job_titles_str, skill_registry, tool_context): return jsearch_list
+    async def mock_fetch_jsearch(job_titles_str, skill_registry, tool_context, exclude_publishers=None):
+        if not exclude_publishers:
+            return jsearch_list
+        filtered = []
+        for job in jsearch_list:
+            pub = job.get("job_publisher") or ""
+            should_exclude = False
+            for expub in exclude_publishers:
+                if expub.strip().lower() in pub.lower():
+                    should_exclude = True
+                    break
+            if not should_exclude:
+                filtered.append(job)
+        return filtered
 
     async def mock_runner_run_async(self, session_id, user_id, new_message):
         agent_name = self.agent.name
