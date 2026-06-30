@@ -1,0 +1,7 @@
+# Excluded job boards / publishers (example template)
+# Add publishers here (case-insensitive match, e.g. BeBee)
+Upwork
+BeBee
+Freelancer
+Fiverr
+Clickjobs.io

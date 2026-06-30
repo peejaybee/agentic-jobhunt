@@ -172,6 +172,38 @@ class LocalSkillRegistry(SkillRegistry):
 skills_directory = os.path.join(workspace_root, ".agents", "skills")
 skill_registry = LocalSkillRegistry(skills_directory)
 
+def load_excluded_keywords(file_path: str) -> list[str]:
+    """Reads a list of excluded keywords/phrases from a text file, ignoring comments and empty lines."""
+    keywords = []
+    if not os.path.exists(file_path):
+        return keywords
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            for line in f:
+                item = line.strip()
+                if not item or item.startswith("#"):
+                    continue
+                keywords.append(item.lower())
+    except Exception as e:
+        print(f"Warning: Error reading excluded keywords: {e}")
+    return keywords
+
+def load_excluded_publishers(file_path: str) -> list[str]:
+    """Reads a list of excluded job boards/publishers from a text file, ignoring comments and empty lines."""
+    publishers = []
+    if not os.path.exists(file_path):
+        return publishers
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            for line in f:
+                item = line.strip()
+                if not item or item.startswith("#"):
+                    continue
+                publishers.append(item)
+    except Exception as e:
+        print(f"Warning: Error reading excluded publishers: {e}")
+    return publishers
+
 # Set up dummy tool context for running ADK tools programmatically
 class DummyInvocationContext:
     def __init__(self):
@@ -212,13 +244,14 @@ async def filter_excluded_employers_via_skill(
         return jobs
 
     try:
+        file_name = "excluded_employers_test.txt" if os.environ.get("BEHAVE_TEST") == "true" else "excluded_employers.txt"
         res = await run_exclude_tool.run_async(
             args={
                 "skill_name": "excluding-employers",
                 "file_path": "scripts/exclude_employers.py",
                 "args": [
                     "--companies", *unique_companies,
-                    "--file_path", os.path.abspath(os.path.join(workspace_root, "excluded_employers.txt"))
+                    "--file_path", os.path.abspath(os.path.join(workspace_root, file_name))
                 ]
             },
             tool_context=tool_context
@@ -753,6 +786,12 @@ async def run_pipeline(
         
     # 2. Fetch Job Boards via Decoupled Ingestion concurrently
     print("Starting concurrent data ingestion from job feeds...")
+    
+    # Load excluded job boards/publishers for JSearch API filtering
+    pub_file_name = "excluded_publishers_test.txt" if os.environ.get("BEHAVE_TEST") == "true" else "excluded_publishers.txt"
+    publishers_file = os.path.abspath(os.path.join(workspace_root, pub_file_name))
+    excluded_publishers = load_excluded_publishers(publishers_file)
+    
     wwr_task = asyncio.create_task(asyncio.to_thread(ingestion.fetch_weworkremotely_jobs))
     remotive_task = asyncio.create_task(asyncio.to_thread(ingestion.fetch_remotive_jobs))
     arbeitnow_task = asyncio.create_task(asyncio.to_thread(ingestion.fetch_arbeitnow_jobs))
@@ -760,7 +799,8 @@ async def run_pipeline(
     jsearch_task = asyncio.create_task(ingestion.fetch_jsearch_jobs_via_skill(
         job_titles_str=job_titles_str,
         skill_registry=skill_registry,
-        tool_context=tool_context
+        tool_context=tool_context,
+        exclude_publishers=excluded_publishers
     ))
     
     wwr_jobs, remotive_jobs, arbeitnow_jobs, themuse_jobs, jsearch_jobs = await asyncio.gather(
@@ -772,11 +812,35 @@ async def run_pipeline(
         print("No jobs fetched from any job boards. Exiting.")
         sys.exit(1)
         
+    # Load excluded keywords/phrases
+    file_name = "excluded_keywords_test.txt" if os.environ.get("BEHAVE_TEST") == "true" else "excluded_keywords.txt"
+    keywords_file = os.path.abspath(os.path.join(workspace_root, file_name))
+    excluded_keywords = load_excluded_keywords(keywords_file)
+    
     # 3. Filter Jobs
     query_titles = [t.strip() for t in job_titles_str.split(",") if t.strip()]
     print(f"Filtering jobs matching titles: {query_titles}")
-    filtered_jobs = [job for job in all_jobs if is_job_match(job, query_titles)]
-    print(f"Found {len(filtered_jobs)} matching jobs out of {len(all_jobs)} total listings.")
+    matching_jobs = [job for job in all_jobs if is_job_match(job, query_titles)]
+    
+    filtered_jobs = []
+    for job in matching_jobs:
+        title_lower = job.get("title", "").lower()
+        desc_lower = job.get("description", "").lower()
+        
+        excluded_by_keyword = False
+        matching_keyword = ""
+        for kw in excluded_keywords:
+            if kw in title_lower or kw in desc_lower:
+                excluded_by_keyword = True
+                matching_keyword = kw
+                break
+                
+        if excluded_by_keyword:
+            print(f"Keyword filter: EXCLUDED {job.get('title', 'Unknown')} ({job.get('company_name', 'Unknown')}) - matches excluded keyword '{matching_keyword}'")
+        else:
+            filtered_jobs.append(job)
+            
+    print(f"Found {len(filtered_jobs)} matching jobs out of {len(all_jobs)} total listings (skipped {len(matching_jobs) - len(filtered_jobs)} via keyword exclusion).")
     
     if not filtered_jobs:
         print("No matching jobs found in feeds for the specified titles.")

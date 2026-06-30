@@ -30,14 +30,14 @@ Feature: Remote Job Matching and Resume Scoring
     Then the agent should skip the salary evaluation and ATS scoring phases
     And a dashboard should be generated showing no job matches found
 
-  Scenario: Excluding employers listed in excluded_employers.txt
-    Given my exclusion file "excluded_employers.txt" contains "lemon.io"
+  Scenario: Excluding employers listed in excluded_employers_test.txt
+    Given my exclusion file "excluded_employers_test.txt" contains "example.com"
     And the remote job feeds have listings:
       | Title             | Company     | Source            | Salary Range        |
-      | Python Developer  | Lemon.io    | We Work Remotely  | $160,000 - $180,000 |
+      | Python Developer  | Example.com | We Work Remotely  | $160,000 - $180,000 |
       | Python Developer  | Tech Corp   | We Work Remotely  | $160,000 - $180,000 |
     When I run the matching agent with query "Python"
-    Then the agent should ignore the listing from "Lemon.io"
+    Then the agent should ignore the listing from "Example.com"
     And only the listing from "Tech Corp" should be evaluated against the salary and ATS criteria
 
   Scenario: Self-correcting malformed LLM JSON output
@@ -46,4 +46,24 @@ Feature: Remote Job Matching and Resume Scoring
     Then the agent should detect the JSON parsing error
     And the agent should query the LLM again with the syntax error and corrective instructions under the same session ID
     And the agent should successfully extract the valid JSON results on a subsequent retry attempt
+
+  Scenario: Excluding jobs matching keywords in excluded_keywords_test.txt
+    Given my keyword exclusion file "excluded_keywords_test.txt" contains "ai trainer"
+    And the remote job feeds have listings:
+      | Title             | Company   | Source           | Salary Range        |
+      | Python Developer  | Tech Corp | We Work Remotely | $160,000 - $180,000 |
+      | AI Trainer        | AI Labs   | We Work Remotely | $160,000 - $180,000 |
+    When I run the matching agent with query "Python, AI"
+    Then the agent should ignore the listing "AI Trainer"
+    And only the listing "Python Developer" should be evaluated against the salary and ATS criteria
+
+  Scenario: Excluding jobs from publishers listed in excluded_publishers_test.txt
+    Given my publisher exclusion file "excluded_publishers_test.txt" contains "Upwork"
+    And the remote job feeds have listings:
+      | Title             | Company    | Source  | Publisher | Salary Range        |
+      | Python Developer  | Tech Corp  | JSearch | LinkedIn  | $160,000 - $180,000 |
+      | Python Developer  | Other Corp | JSearch | Upwork    | $160,000 - $180,000 |
+    When I run the matching agent with query "Python"
+    Then the agent should ignore the listing from "Other Corp"
+    And only the listing from "Tech Corp" should be evaluated against the salary and ATS criteria
 

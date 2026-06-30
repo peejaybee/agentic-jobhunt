@@ -83,6 +83,31 @@ python job_matcher_agent.py --resume resume.pdf --titles "Python Developer, Soft
 
 ---
 
+## Exclusion Lists & Filters
+
+To filter out noise and target high-quality listings, you can customize three exclusion lists in the workspace root:
+1. **`excluded_employers.txt`**: List of company names (case-insensitive substring match) to skip. For example, add `example.com` to exclude jobs from Example.com.
+2. **`excluded_keywords.txt`**: List of keywords or phrases (case-insensitive substring match). The pipeline scans both job titles and job descriptions, immediately discarding any jobs matching these terms. By default, it excludes AI training/annotation contracts:
+   ```text
+   ai trainer
+   ai training
+   ai tutor
+   annotation specialist
+   data labeler
+   data labeling
+   llm trainer
+   ai research and evaluation
+   outlier
+   scale ai
+   remotasks
+   ai evaluator
+   evaluation consultant
+   24-mag
+   ```
+3. **`excluded_publishers.txt`**: List of job boards or publishers (case-insensitive substring match) to skip from JSearch results (e.g., `Upwork`, `BeBee`, `Freelancer`). Filtering happens natively at the API level (saving JSearch API quota) and is double-checked locally.
+
+---
+
 ## Caching & Performance
 
 To optimize execution speed and minimize local LLM load, the agent utilizes a local SQLite database (`jobs_cache.db`) in the workspace root to cache job evaluations:

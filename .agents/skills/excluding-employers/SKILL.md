@@ -27,7 +27,7 @@ Run the script using `run_skill_script`:
   "skill_name": "excluding-employers",
   "file_path": "scripts/exclude_employers.py",
   "args": {
-    "--companies": ["Lemon.io", "Google"],
+    "--companies": ["example.com", "Google"],
     "--file_path": "excluded_employers.txt"
   }
 }

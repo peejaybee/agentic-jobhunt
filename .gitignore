@@ -12,3 +12,9 @@ job_matches_*.html
 # SQLite cache
 jobs_cache.db
 excluded_employers.txt
+excluded_keywords.txt
+excluded_employers_test.txt
+excluded_keywords_test.txt
+excluded_publishers.txt
+excluded_publishers_test.txt
+
