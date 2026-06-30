@@ -381,8 +381,8 @@ def execute_pipeline(context, query, max_eval, min_salary, concurrency, desc_lim
             
             results = {}
             for company in companies:
-                if company.lower() == "lemon.io":
-                    results[company] = {"excluded": True, "reason": "Lemon.io matches excluded list"}
+                if company.lower() == "example.com":
+                    results[company] = {"excluded": True, "reason": "Example.com matches excluded list"}
                 else:
                     results[company] = {"excluded": False, "reason": "No match"}
             

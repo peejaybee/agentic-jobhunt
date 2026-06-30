@@ -31,13 +31,13 @@ Feature: Remote Job Matching and Resume Scoring
     And a dashboard should be generated showing no job matches found
 
   Scenario: Excluding employers listed in excluded_employers_test.txt
-    Given my exclusion file "excluded_employers_test.txt" contains "lemon.io"
+    Given my exclusion file "excluded_employers_test.txt" contains "example.com"
     And the remote job feeds have listings:
       | Title             | Company     | Source            | Salary Range        |
-      | Python Developer  | Lemon.io    | We Work Remotely  | $160,000 - $180,000 |
+      | Python Developer  | Example.com | We Work Remotely  | $160,000 - $180,000 |
       | Python Developer  | Tech Corp   | We Work Remotely  | $160,000 - $180,000 |
     When I run the matching agent with query "Python"
-    Then the agent should ignore the listing from "Lemon.io"
+    Then the agent should ignore the listing from "Example.com"
     And only the listing from "Tech Corp" should be evaluated against the salary and ATS criteria
 
   Scenario: Self-correcting malformed LLM JSON output
