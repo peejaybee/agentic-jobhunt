@@ -314,7 +314,7 @@ def execute_pipeline(context, query, max_eval, min_salary, concurrency, desc_lim
     def mock_fetch_remotive(): return remotive_list
     def mock_fetch_arbeitnow(): return arbeitnow_list
     def mock_fetch_themuse(): return themuse_list
-    async def mock_fetch_jsearch(job_titles_str, skill_registry, tool_context, exclude_publishers=None):
+    def mock_fetch_jsearch(job_titles_str, exclude_publishers=None):
         if not exclude_publishers:
             return jsearch_list
         filtered = []
@@ -393,7 +393,7 @@ def execute_pipeline(context, query, max_eval, min_salary, concurrency, desc_lim
          patch('ingestion.fetch_remotive_jobs', mock_fetch_remotive), \
          patch('ingestion.fetch_arbeitnow_jobs', mock_fetch_arbeitnow), \
          patch('ingestion.fetch_themuse_jobs', mock_fetch_themuse), \
-         patch('ingestion.fetch_jsearch_jobs_via_skill', mock_fetch_jsearch), \
+         patch('ingestion.fetch_jsearch_jobs', mock_fetch_jsearch), \
          patch('google.adk.runners.Runner.run_async', mock_runner_run_async), \
          patch('google.adk.tools.skill_toolset.RunSkillScriptTool.run_async', mock_run_skill_script_tool_run_async), \
          patch('sys.exit') as mock_sys_exit:
@@ -404,6 +404,9 @@ def execute_pipeline(context, query, max_eval, min_salary, concurrency, desc_lim
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
         
+        def mock_extract_resume_text(pdf_path):
+            return context.resume_text
+
         original_run_matching_pipeline = orchestrator.run_matching_pipeline
         async def hook_run_matching_pipeline(resume_text, jobs, model_name, max_eval, min_salary, concurrency, desc_limit):
             res = await original_run_matching_pipeline(resume_text, jobs, model_name, max_eval, min_salary, concurrency, desc_limit)
@@ -418,16 +421,17 @@ def execute_pipeline(context, query, max_eval, min_salary, concurrency, desc_lim
                 context.passed_jobs.append(res_job)
             return res_job, passed
 
-        original_filter_excluded_employers_via_skill = orchestrator.filter_excluded_employers_via_skill
+        original_filter_excluded_employers = orchestrator.filter_excluded_employers
         context.kept_jobs = []
-        async def hook_filter_excluded_employers_via_skill(run_exclude_tool, jobs):
-            res_jobs = await original_filter_excluded_employers_via_skill(run_exclude_tool, jobs)
+        def hook_filter_excluded_employers(jobs, file_path):
+            res_jobs = original_filter_excluded_employers(jobs, file_path)
             context.kept_jobs = res_jobs
             return res_jobs
 
         with patch('orchestrator.run_matching_pipeline', hook_run_matching_pipeline), \
              patch('orchestrator.filter_job_via_skill', hook_filter_job_via_skill), \
-             patch('orchestrator.filter_excluded_employers_via_skill', hook_filter_excluded_employers_via_skill):
+             patch('orchestrator.filter_excluded_employers', hook_filter_excluded_employers), \
+             patch('orchestrator.extract_resume_text', mock_extract_resume_text):
             
             loop.run_until_complete(
                 orchestrator.run_pipeline(
