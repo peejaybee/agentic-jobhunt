@@ -30,6 +30,7 @@ async def main():
     parser.add_argument("--min-salary", type=int, default=150000, help="Minimum salary threshold in USD to keep a job (default: 150000)")
     parser.add_argument("--concurrency", type=int, default=3, help="Maximum concurrent LLM calls allowed (default: 3)")
     parser.add_argument("--desc-limit", type=int, default=10000, help="Character limit for truncating job descriptions sent to LLMs (default: 10000)")
+    parser.add_argument("--max-age", type=int, default=5, help="Filter out jobs older than this many days (default: 5)")
     args = parser.parse_args()
     
     print("=" * 60)
@@ -43,7 +44,8 @@ async def main():
         max_eval=args.max_eval,
         min_salary=args.min_salary,
         concurrency=args.concurrency,
-        desc_limit=args.desc_limit
+        desc_limit=args.desc_limit,
+        max_age=args.max_age
     )
 
 if __name__ == "__main__":

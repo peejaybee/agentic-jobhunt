@@ -310,6 +310,48 @@ def is_job_match(job: dict, query_titles: list[str]) -> bool:
             
     return False
 
+def parse_pub_date(pub_date_str: str) -> datetime.datetime | None:
+    """Robust parser supporting RFC 822 and ISO 8601 publication date formats."""
+    if not pub_date_str:
+        return None
+    
+    import email.utils
+    date_str = pub_date_str.strip()
+    
+    # 1. Try RFC 822 format (e.g. "Tue, 23 Jun 2026 12:00:00 GMT")
+    try:
+        dt = email.utils.parsedate_to_datetime(date_str)
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+        return dt
+    except Exception:
+        pass
+        
+    # 2. Try ISO 8601 format (e.g. "2026-06-23T12:00:00.000Z")
+    iso_str = date_str
+    if iso_str.endswith("Z"):
+        iso_str = iso_str[:-1] + "+00:00"
+    if " " in iso_str and "," not in iso_str:
+        iso_str = iso_str.replace(" ", "T")
+        
+    try:
+        dt = datetime.datetime.fromisoformat(iso_str)
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+        return dt
+    except Exception:
+        pass
+        
+    # 3. Try simple YYYY-MM-DD
+    try:
+        m = re.match(r'^(\d{4})-(\d{2})-(\d{2})', date_str)
+        if m:
+            return datetime.datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    except Exception:
+        pass
+        
+    return None
+
 def format_date_badge(pub_date_str: str) -> str:
     """Format publication dates nicely if possible."""
     if not pub_date_str:
@@ -753,7 +795,8 @@ async def run_pipeline(
     max_eval: int,
     min_salary: int = 150000,
     concurrency: int = 3,
-    desc_limit: int = 10000
+    desc_limit: int = 10000,
+    max_age: int = 5
 ):
     """Orchestrates the entire PDF parsing, Job Crawling, Scoring, and Reporting workflow."""
     # 1. Parse Resume natively
@@ -790,8 +833,29 @@ async def run_pipeline(
     )
     all_jobs = wwr_jobs + remotive_jobs + arbeitnow_jobs + themuse_jobs + jsearch_jobs
     
+    # Filter out jobs older than max_age days
+    if max_age > 0:
+        current_time = datetime.datetime.utcnow()
+        filtered_by_age = []
+        skipped_by_age_count = 0
+        for job in all_jobs:
+            pub_date_str = job.get("publication_date")
+            if not pub_date_str:
+                filtered_by_age.append(job)
+                continue
+            pub_dt = parse_pub_date(pub_date_str)
+            if pub_dt:
+                age = current_time - pub_dt
+                if age > datetime.timedelta(days=max_age):
+                    skipped_by_age_count += 1
+                    continue
+            filtered_by_age.append(job)
+        all_jobs = filtered_by_age
+        if skipped_by_age_count > 0:
+            print(f"Age filter: Filtered out {skipped_by_age_count} jobs older than {max_age} days.")
+            
     if not all_jobs:
-        print("No jobs fetched from any job boards. Exiting.")
+        print("No jobs fetched from any job boards (or all fetched jobs were older than the age limit). Exiting.")
         sys.exit(1)
         
     # Load excluded keywords/phrases

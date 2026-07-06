@@ -75,6 +75,13 @@ def step_impl(context):
 
         publisher = row['Publisher'] if 'Publisher' in row.headings else ""
 
+        import datetime
+        pub_date = row['Publication Date'] if 'Publication Date' in row.headings else "Tue, 23 Jun 2026 12:00:00 GMT"
+        if pub_date == "today":
+            pub_date = datetime.datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S GMT")
+        elif pub_date == "10 days ago":
+            pub_date = (datetime.datetime.utcnow() - datetime.timedelta(days=10)).strftime("%a, %d %b %Y %H:%M:%S GMT")
+
         url_safe_title = title.lower().replace(" ", "-")
         url_safe_company = company.lower().replace(" ", "-")
         job = {
@@ -83,7 +90,7 @@ def step_impl(context):
             "description": f"Position for a {title} at {company}. Compensation details: {salary_range}.",
             "source": f"JSearch ({publisher})" if (source == "JSearch" and publisher) else source,
             "url": f"https://example.com/job/{url_safe_title}-{url_safe_company}",
-            "publication_date": "Tue, 23 Jun 2026 12:00:00 GMT",
+            "publication_date": pub_date,
             "category": "Software Engineering",
             "job_publisher": publisher
         }
@@ -150,6 +157,18 @@ def step_impl(context, query, max_eval, min_salary, concurrency, desc_limit):
         min_salary=min_salary,
         concurrency=concurrency,
         desc_limit=desc_limit
+    )
+
+@when('I run the matching agent with query "{query}", max age {max_age:d}')
+def step_impl(context, query, max_age):
+    execute_pipeline(
+        context=context,
+        query=query,
+        max_eval=30,
+        min_salary=150000,
+        concurrency=3,
+        desc_limit=10000,
+        max_age=max_age
     )
 
 @when('the agent evaluates a job listing')
@@ -294,7 +313,7 @@ def step_impl(context):
     assert context.rated_job_explanation == "Self-corrected match", f"Explanation: {context.rated_job_explanation}"
 
 
-def execute_pipeline(context, query, max_eval, min_salary, concurrency, desc_limit):
+def execute_pipeline(context, query, max_eval, min_salary, concurrency, desc_limit, max_age=30):
     context.searched_query = query
     context.used_min_salary = min_salary
     context.used_concurrency = concurrency
@@ -441,7 +460,8 @@ def execute_pipeline(context, query, max_eval, min_salary, concurrency, desc_lim
                     max_eval=max_eval,
                     min_salary=min_salary,
                     concurrency=concurrency,
-                    desc_limit=desc_limit
+                    desc_limit=desc_limit,
+                    max_age=max_age
                 )
             )
             
