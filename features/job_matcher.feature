@@ -67,3 +67,11 @@ Feature: Remote Job Matching and Resume Scoring
     Then the agent should ignore the listing from "Other Corp"
     And only the listing from "Tech Corp" should be evaluated against the salary and ATS criteria
 
+  Scenario: Excluding jobs older than the max age threshold
+    And the remote job feeds have listings:
+      | Title            | Company   | Source           | Publication Date | Salary Range        |
+      | Fresh Developer  | Tech Corp | We Work Remotely | today            | $160,000 - $180,000 |
+      | Stale Developer  | Old Corp  | We Work Remotely | 10 days ago      | $160,000 - $180,000 |
+    When I run the matching agent with query "Developer", max age 5
+    Then the agent should ignore the listing from "Old Corp"
+    And only the listing from "Tech Corp" should be evaluated against the salary and ATS criteria

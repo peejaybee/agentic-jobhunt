@@ -39,6 +39,7 @@ def init_db():
             )
         """)
         conn.commit()
+        cleanup_old_cache()
     finally:
         conn.close()
 
@@ -123,5 +124,19 @@ def set_cached_ats(url: str, resume_hash: str, match_score: int, explanation: st
             (url, resume_hash, match_score, explanation, datetime.utcnow().isoformat())
         )
         conn.commit()
+    finally:
+        conn.close()
+
+def cleanup_old_cache():
+    """Removes cached salary and ATS entries older than 13 days and 12 hours."""
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM salary_cache WHERE datetime(evaluated_at) < datetime('now', '-13 days', '-12 hours')")
+        cursor.execute("DELETE FROM ats_cache WHERE datetime(evaluated_at) < datetime('now', '-13 days', '-12 hours')")
+        conn.commit()
+    except Exception as e:
+        print(f"Warning: Failed to clean up old cache: {e}")
     finally:
         conn.close()

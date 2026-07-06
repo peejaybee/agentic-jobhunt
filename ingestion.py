@@ -3,8 +3,9 @@ import json
 import xml.etree.ElementTree as ET
 import requests
 
-from google.adk.tools.skill_toolset import SkillToolset, RunSkillScriptTool
-from google.adk.code_executors.unsafe_local_code_executor import UnsafeLocalCodeExecutor
+import os
+import time
+from dotenv import load_dotenv
 
 def fetch_weworkremotely_jobs() -> list[dict]:
     """Fetches jobs from We Work Remotely RSS feed."""
@@ -165,51 +166,116 @@ def fetch_themuse_jobs() -> list[dict]:
         print(f"Warning: Failed to fetch The Muse jobs: {e}")
         return []
 
-async def fetch_jsearch_jobs_via_skill(job_titles_str: str, skill_registry, tool_context, exclude_publishers: list[str] = None) -> list[dict]:
-    """Fetches jobs from JSearch API using the jsearch-rapidapi custom ADK skill."""
-    print("Fetching jobs from JSearch API via ADK skill...")
+def fetch_jsearch_jobs(job_titles_str: str, exclude_publishers: list[str] = None) -> list[dict]:
+    """Fetches jobs from JSearch API natively in Python."""
+    print("Fetching jobs from JSearch API...")
+    load_dotenv()
+    
+    api_key = os.getenv("X-RapidAPI-Key") or os.getenv("X_RAPIDAPI_KEY")
+    api_host = os.getenv("X-RapidAPI-Host") or os.getenv("X_RAPIDAPI_HOST") or "jsearch.p.rapidapi.com"
+    
+    if not api_key or "dummy" in api_key.lower():
+        print("Warning: No valid X-RapidAPI-Key found in environment or .env file.")
+        return []
+
+    # Use the first job title search query as the query for JSearch
+    first_title = job_titles_str.split(",")[0].strip() if job_titles_str else "Python Developer"
+    query = f"{first_title} in Remote"
+
+    url = f"https://{api_host}/search-v2"
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "X-RapidAPI-Key": api_key,
+        "X-RapidAPI-Host": api_host
+    }
+
     try:
-        code_executor = UnsafeLocalCodeExecutor()
-        toolset = SkillToolset(registry=skill_registry, code_executor=code_executor)
-        run_skill_script_tool = RunSkillScriptTool(toolset)
+        raw_jobs = []
+        current_cursor = None
         
-        # Use the first job title search query as the query for JSearch
-        first_title = job_titles_str.split(",")[0].strip() if job_titles_str else "Python Developer"
-        query = f"{first_title} in Remote"
-        
-        args_list = ["--query", query]
-        if exclude_publishers:
-            args_list.extend(["--exclude_publishers"] + exclude_publishers)
+        # Fetch 1 page
+        num_pages = 1
+        for p in range(num_pages):
+            params = {}
+            if current_cursor:
+                params["cursor"] = current_cursor
+            else:
+                params["query"] = query
+                if exclude_publishers:
+                    params["exclude_job_publisher"] = ",".join(exclude_publishers)
+                
+            MAX_RETRIES = 3
+            TIMEOUT = 30
+            r = None
+            for attempt in range(MAX_RETRIES):
+                try:
+                    r = requests.get(url, headers=headers, params=params, timeout=TIMEOUT)
+                    r.raise_for_status()
+                    break
+                except (requests.exceptions.RequestException, requests.exceptions.Timeout) as req_err:
+                    if attempt == MAX_RETRIES - 1:
+                        raise req_err
+                    print(f"JSearch API request attempt {attempt + 1} failed: {req_err}. Retrying in {2 ** attempt}s...")
+                    time.sleep(2 ** attempt)
             
-        res = await run_skill_script_tool.run_async(
-            args={
-                "skill_name": "jsearch-rapidapi",
-                "file_path": "scripts/search_jsearch.py",
-                "args": args_list
-            },
-            tool_context=tool_context
-        )
-        
-        if res.get("status") != "success" or res.get("error"):
-            error_msg = res.get("error") or res.get("stderr") or "Unknown error"
-            print(f"Warning: JSearch skill execution failed: {error_msg}")
-            return []
+            response_json = r.json()
+            if response_json.get("status") == "ERROR":
+                error_info = response_json.get("error", {})
+                error_msg = error_info.get("message") or "Unknown JSearch API error"
+                print(f"Warning: JSearch API returned error status: {error_msg}")
+                break
+                
+            data_obj = response_json.get("data")
+            if isinstance(data_obj, dict):
+                page_jobs = data_obj.get("jobs", [])
+                current_cursor = data_obj.get("cursor")
+            elif isinstance(data_obj, list):
+                page_jobs = data_obj
+                current_cursor = None
+            else:
+                page_jobs = []
+                current_cursor = None
+                
+            if not page_jobs:
+                break
+                
+            raw_jobs.extend(page_jobs)
+            if not current_cursor:
+                break
+
+        normalized_jobs = []
+        for job in raw_jobs:
+            publisher = job.get("job_publisher") or ""
+            if exclude_publishers:
+                if any(expub.strip().lower() in publisher.lower() for expub in exclude_publishers if expub.strip()):
+                    continue
+
+            title = job.get("job_title") or "JSearch Job"
+            company = job.get("employer_name") or "Unknown"
+            desc = job.get("job_description") or ""
+            link = job.get("job_apply_link") or job.get("job_google_link") or ""
             
-        stderr = res.get("stderr", "").strip()
-        if stderr:
-            print(f"[JSearch Skill Output] {stderr}")
+            pub_date = job.get("job_posted_at_datetime_utc") or ""
+            if not pub_date and job.get("job_posted_at_timestamp"):
+                try:
+                    pub_date = datetime.datetime.fromtimestamp(job["job_posted_at_timestamp"]).strftime("%a, %d %b %Y %H:%M:%S GMT")
+                except Exception:
+                    pub_date = str(job["job_posted_at_timestamp"])
             
-        stdout = res.get("stdout", "").strip()
-        if not stdout:
-            return []
+            category = job.get("job_employment_type") or "Remote Job"
             
-        try:
-            jobs = json.loads(stdout)
-            print(f"Retrieved {len(jobs)} jobs from JSearch API.")
-            return jobs
-        except Exception as e:
-            print(f"Warning: Failed to parse JSearch output JSON: {e}")
-            return []
+            normalized_jobs.append({
+                "source": f"JSearch ({publisher})" if publisher else "JSearch (via RapidAPI)",
+                "title": title,
+                "company_name": company,
+                "description": desc,
+                "url": link,
+                "publication_date": pub_date,
+                "category": category
+            })
+            
+        print(f"Retrieved {len(normalized_jobs)} jobs from JSearch API.")
+        return normalized_jobs
     except Exception as e:
-        print(f"Warning: Failed to run JSearch skill: {e}")
+        print(f"Warning: Failed to fetch JSearch jobs: {e}")
         return []

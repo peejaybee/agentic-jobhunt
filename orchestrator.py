@@ -18,6 +18,7 @@ load_dotenv()
 cache.init_db()
 
 import ingestion
+from pypdf import PdfReader
 
 class SafeHTMLSanitizer(HTMLParser):
     def __init__(self):
@@ -229,62 +230,63 @@ class DummyToolContext:
 tool_context = DummyToolContext()
 # Fetch functions moved to ingestion.py
 
-async def filter_excluded_employers_via_skill(
-    run_exclude_tool: RunSkillScriptTool,
-    jobs: list[dict]
-) -> list[dict]:
-    """Filters a list of jobs by calling the excluding-employers skill in a single batch."""
+def extract_resume_text(pdf_path: str) -> str:
+    """Extracts text from a local PDF resume using pypdf."""
+    if not os.path.exists(pdf_path):
+        raise FileNotFoundError(f"Resume file not found at: {pdf_path}")
+    
+    reader = PdfReader(pdf_path)
+    text = ""
+    for page in reader.pages:
+        page_text = page.extract_text()
+        if page_text:
+            text += page_text + "\n"
+    return text.strip()
+
+def check_employer_exclusion(company: str, exclusion_rules: list[str]) -> tuple[bool, str]:
+    """Checks if a single company matches any of the exclusion rules."""
+    company_lower = company.strip().lower()
+    for rule in exclusion_rules:
+        rule_lower = rule.lower()
+        if rule_lower in company_lower or company_lower in rule_lower:
+            return True, f"Company '{company}' is excluded by rule matching '{rule}'."
+    return False, "Company is not in the exclusion list."
+
+def filter_excluded_employers(jobs: list[dict], file_path: str) -> list[dict]:
+    """Filters a list of jobs based on an excluded employers file, using native Python matching."""
     if not jobs:
         return []
-
-    # Collect unique non-empty company names
-    unique_companies = sorted(list({job.get("company_name", "").strip() for job in jobs if job.get("company_name", "").strip()}))
     
-    if not unique_companies:
+    # Read exclusion rules
+    rules = []
+    if os.path.exists(file_path):
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    item = line.strip()
+                    if not item or item.startswith("#"):
+                        continue
+                    rules.append(item)
+        except Exception as e:
+            print(f"Warning: Error reading exclusion file: {e}")
+    else:
+        print(f"Warning: Exclusion file not found at: {file_path}. Skipping checks.")
         return jobs
 
-    try:
-        file_name = "excluded_employers_test.txt" if os.environ.get("BEHAVE_TEST") == "true" else "excluded_employers.txt"
-        res = await run_exclude_tool.run_async(
-            args={
-                "skill_name": "excluding-employers",
-                "file_path": "scripts/exclude_employers.py",
-                "args": [
-                    "--companies", *unique_companies,
-                    "--file_path", os.path.abspath(os.path.join(workspace_root, file_name))
-                ]
-            },
-            tool_context=tool_context
-        )
-        
-        if res.get("status") != "success" or res.get("error"):
-            error_msg = res.get("error") or res.get("stderr") or "Unknown error"
-            print(f"Warning: Exclusion skill failed: {error_msg}")
-            return jobs
+    kept_jobs = []
+    for job in jobs:
+        company = job.get("company_name", "").strip()
+        if not company:
+            kept_jobs.append(job)
+            continue
             
-        stdout = res.get("stdout", "").strip()
-        
-        json_start = stdout.find("{")
-        json_end = stdout.rfind("}") + 1
-        if json_start != -1 and json_end != 0:
-            parsed = json.loads(stdout[json_start:json_end])
-            kept_jobs = []
-            for job in jobs:
-                company_name = job.get("company_name", "").strip()
-                comp_res = parsed.get(company_name, {})
-                excluded = comp_res.get("excluded", False)
-                reason = comp_res.get("reason", "")
-                if excluded:
-                    print(f"Employer filter: EXCLUDED {company_name} - {reason}")
-                else:
-                    kept_jobs.append(job)
-            return kept_jobs
+        excluded, reason = check_employer_exclusion(company, rules)
+        if excluded:
+            print(f"Employer filter: EXCLUDED {company} - {reason}")
         else:
-            print("Warning: Exclusion skill output did not contain valid JSON.")
-            return jobs
-    except Exception as e:
-        print(f"Error running batch exclusion filter: {e}")
-        return jobs
+            kept_jobs.append(job)
+            
+    return kept_jobs
 
 
 
@@ -307,6 +309,48 @@ def is_job_match(job: dict, query_titles: list[str]) -> bool:
             return True
             
     return False
+
+def parse_pub_date(pub_date_str: str) -> datetime.datetime | None:
+    """Robust parser supporting RFC 822 and ISO 8601 publication date formats."""
+    if not pub_date_str:
+        return None
+    
+    import email.utils
+    date_str = pub_date_str.strip()
+    
+    # 1. Try RFC 822 format (e.g. "Tue, 23 Jun 2026 12:00:00 GMT")
+    try:
+        dt = email.utils.parsedate_to_datetime(date_str)
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+        return dt
+    except Exception:
+        pass
+        
+    # 2. Try ISO 8601 format (e.g. "2026-06-23T12:00:00.000Z")
+    iso_str = date_str
+    if iso_str.endswith("Z"):
+        iso_str = iso_str[:-1] + "+00:00"
+    if " " in iso_str and "," not in iso_str:
+        iso_str = iso_str.replace(" ", "T")
+        
+    try:
+        dt = datetime.datetime.fromisoformat(iso_str)
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+        return dt
+    except Exception:
+        pass
+        
+    # 3. Try simple YYYY-MM-DD
+    try:
+        m = re.match(r'^(\d{4})-(\d{2})-(\d{2})', date_str)
+        if m:
+            return datetime.datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    except Exception:
+        pass
+        
+    return None
 
 def format_date_badge(pub_date_str: str) -> str:
     """Format publication dates nicely if possible."""
@@ -695,13 +739,12 @@ async def run_matching_pipeline(
     semaphore = asyncio.Semaphore(concurrency)
     
     # 0. Employer Exclusion Phase
-    exclude_toolset = SkillToolset(registry=skill_registry, code_executor=code_executor)
-    run_exclude_tool = RunSkillScriptTool(exclude_toolset)
-    
     total_jobs = len(jobs)
-    print(f"Running employer exclusion check on all {total_jobs} matching jobs using ADK 'excluding-employers' skill...")
+    print(f"Running employer exclusion check on all {total_jobs} matching jobs natively...")
     
-    kept_jobs = await filter_excluded_employers_via_skill(run_exclude_tool, jobs)
+    file_name = "excluded_employers_test.txt" if os.environ.get("BEHAVE_TEST") == "true" else "excluded_employers.txt"
+    employers_file = os.path.abspath(os.path.join(workspace_root, file_name))
+    kept_jobs = filter_excluded_employers(jobs, employers_file)
     
     print(f"Employer filter completed. {len(kept_jobs)} out of {total_jobs} jobs kept.")
     
@@ -752,34 +795,17 @@ async def run_pipeline(
     max_eval: int,
     min_salary: int = 150000,
     concurrency: int = 3,
-    desc_limit: int = 10000
+    desc_limit: int = 10000,
+    max_age: int = 5
 ):
     """Orchestrates the entire PDF parsing, Job Crawling, Scoring, and Reporting workflow."""
-    # 1. Parse Resume using the pdf-parsing skill via ADK RunSkillScriptTool
-    print(f"Parsing resume via ADK 'pdf-parsing' skill...")
+    # 1. Parse Resume natively
+    print(f"Parsing resume natively...")
     try:
-        code_executor = UnsafeLocalCodeExecutor()
-        toolset = SkillToolset(registry=skill_registry, code_executor=code_executor)
-        run_skill_script_tool = RunSkillScriptTool(toolset)
-        
-        res = await run_skill_script_tool.run_async(
-            args={
-                "skill_name": "pdf-parsing",
-                "file_path": "scripts/pdf_parser.py",
-                "args": ["--pdf", os.path.abspath(resume_path)]
-            },
-            tool_context=tool_context
-        )
-        
-        if res.get("status") != "success" or res.get("error"):
-            error_msg = res.get("error") or res.get("stderr") or "Unknown error"
-            raise RuntimeError(error_msg)
-            
-        resume_text = res.get("stdout", "").strip()
+        resume_text = extract_resume_text(resume_path)
         if not resume_text:
             raise ValueError("Parsed resume text is empty.")
-            
-        print("Resume successfully parsed using ADK skill.")
+        print("Resume successfully parsed.")
     except Exception as e:
         print(f"Critical Error parsing resume: {e}")
         sys.exit(1)
@@ -796,11 +822,10 @@ async def run_pipeline(
     remotive_task = asyncio.create_task(asyncio.to_thread(ingestion.fetch_remotive_jobs))
     arbeitnow_task = asyncio.create_task(asyncio.to_thread(ingestion.fetch_arbeitnow_jobs))
     themuse_task = asyncio.create_task(asyncio.to_thread(ingestion.fetch_themuse_jobs))
-    jsearch_task = asyncio.create_task(ingestion.fetch_jsearch_jobs_via_skill(
-        job_titles_str=job_titles_str,
-        skill_registry=skill_registry,
-        tool_context=tool_context,
-        exclude_publishers=excluded_publishers
+    jsearch_task = asyncio.create_task(asyncio.to_thread(
+        ingestion.fetch_jsearch_jobs,
+        job_titles_str,
+        excluded_publishers
     ))
     
     wwr_jobs, remotive_jobs, arbeitnow_jobs, themuse_jobs, jsearch_jobs = await asyncio.gather(
@@ -808,8 +833,29 @@ async def run_pipeline(
     )
     all_jobs = wwr_jobs + remotive_jobs + arbeitnow_jobs + themuse_jobs + jsearch_jobs
     
+    # Filter out jobs older than max_age days
+    if max_age > 0:
+        current_time = datetime.datetime.utcnow()
+        filtered_by_age = []
+        skipped_by_age_count = 0
+        for job in all_jobs:
+            pub_date_str = job.get("publication_date")
+            if not pub_date_str:
+                filtered_by_age.append(job)
+                continue
+            pub_dt = parse_pub_date(pub_date_str)
+            if pub_dt:
+                age = current_time - pub_dt
+                if age > datetime.timedelta(days=max_age):
+                    skipped_by_age_count += 1
+                    continue
+            filtered_by_age.append(job)
+        all_jobs = filtered_by_age
+        if skipped_by_age_count > 0:
+            print(f"Age filter: Filtered out {skipped_by_age_count} jobs older than {max_age} days.")
+            
     if not all_jobs:
-        print("No jobs fetched from any job boards. Exiting.")
+        print("No jobs fetched from any job boards (or all fetched jobs were older than the age limit). Exiting.")
         sys.exit(1)
         
     # Load excluded keywords/phrases

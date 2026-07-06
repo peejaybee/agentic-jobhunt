@@ -4,15 +4,13 @@ An AI-powered, multi-skill remote job crawler and resume evaluation agent. It ag
 
 ---
 
-## Features & Multi-Skill Architecture
+The agent is built using a hybrid architecture combining high-performance native Python pipelines with the Google ADK framework:
 
-The agent is built using the Google ADK framework and orchestrates five modular skills located under `.agents/skills/`:
-
-1. **`pdf-parsing`** (Script-Based): Extracts text from local PDF resumes using the `pypdf` library.
-2. **`excluding-employers`** (Script-Based): Filters out listings from companies specified in `excluded_employers.txt` using case-insensitive checks.
-3. **`jsearch-rapidapi`** (Script-Based): Queries high-volume web job postings using JSearch via RapidAPI.
-4. **`applying-compensation-filter`** (In-Process Agent): Uses a local LLM agent to parse unstructured job descriptions, normalize salary ranges to USD/year, and exclude listings that pay below your target threshold or omit compensation information.
-5. **`ats-scoring`** (In-Process Agent): Evaluates resume compatibility against qualified job descriptions, returning a match suitability score (0-100) and structured AI recruiter feedback.
+1. **Resume PDF Parsing**: Natively extracts text from local PDF resumes using the `pypdf` library.
+2. **Employer Exclusion**: Natively filters out listings from companies specified in `excluded_employers.txt` using case-insensitive checks.
+3. **JSearch Ingestion**: Natively queries high-volume web job postings using JSearch via RapidAPI, supporting publisher exclusion lists.
+4. **Compensation Filter (ADK Agent Skill)**: Uses a local LLM agent to parse unstructured job descriptions, normalize salary ranges to USD/year, and exclude listings that pay below your target threshold or omit compensation information.
+5. **ATS Scoring (ADK Agent Skill)**: Evaluates resume compatibility against qualified job descriptions, returning a suitability score (0-100) and structured AI recruiter feedback.
 
 ### Advanced Agentic Behaviors
 * **Progressive Disclosure**: Reconfigured to use a dynamic `LocalSkillRegistry`. Instead of hardcoding skill data, the orchestrator loads `SKILL.md` definitions dynamically from disk only when a skill tool is invoked.
