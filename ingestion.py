@@ -279,3 +279,86 @@ def fetch_jsearch_jobs(job_titles_str: str, exclude_publishers: list[str] = None
     except Exception as e:
         print(f"Warning: Failed to fetch JSearch jobs: {e}")
         return []
+
+def fetch_himalayas_jobs() -> list[dict]:
+    """Fetches remote jobs from Himalayas API."""
+    url = "https://himalayas.app/jobs/api"
+    try:
+        response = requests.get(url, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+        raw_jobs = data.get("jobs", [])
+        jobs = []
+        for job in raw_jobs:
+            title = job.get("title", "")
+            company = job.get("companyName", "")
+            desc = job.get("description", "")
+            link = job.get("applicationLink", "")
+            
+            # Parse timestamp to RFC 822 format
+            pub_date = ""
+            ts = job.get("pubDate")
+            if ts:
+                try:
+                    pub_date = datetime.datetime.fromtimestamp(ts).strftime("%a, %d %b %Y %H:%M:%S GMT")
+                except Exception:
+                    pub_date = str(ts)
+                    
+            category = job.get("employmentType") or "Remote Job"
+            
+            jobs.append({
+                "source": "Himalayas",
+                "title": title,
+                "company_name": company,
+                "description": desc,
+                "url": link,
+                "publication_date": pub_date,
+                "category": category
+            })
+        print(f"Retrieved {len(jobs)} jobs from Himalayas API.")
+        return jobs
+    except Exception as e:
+        print(f"Warning: Failed to fetch Himalayas jobs: {e}")
+        return []
+
+def fetch_remoteok_jobs() -> list[dict]:
+    """Fetches remote jobs from Remote OK API."""
+    url = "https://remoteok.com/api"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    try:
+        response = requests.get(url, headers=headers, timeout=15)
+        response.raise_for_status()
+        raw_data = response.json()
+        
+        # Remote OK returns a list where the first item is a metadata dictionary (has "legal" key)
+        if not isinstance(raw_data, list) or len(raw_data) <= 1:
+            print("Remote OK API returned empty or invalid data.")
+            return []
+            
+        jobs = []
+        # Skip the first element as it is metadata
+        for job in raw_data[1:]:
+            title = job.get("position", "")
+            company = job.get("company", "")
+            desc = job.get("description", "")
+            link = job.get("apply_url") or job.get("url", "")
+            pub_date = job.get("date", "")
+            category = ", ".join(job.get("tags", [])) if job.get("tags") else "Remote Job"
+            
+            jobs.append({
+                "source": "Remote OK",
+                "title": title,
+                "company_name": company,
+                "description": desc,
+                "url": link,
+                "publication_date": pub_date,
+                "category": category
+            })
+            
+        print(f"Retrieved {len(jobs)} jobs from Remote OK API.")
+        return jobs
+    except Exception as e:
+        print(f"Warning: Failed to fetch Remote OK jobs: {e}")
+        return []

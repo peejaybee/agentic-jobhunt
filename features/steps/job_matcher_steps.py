@@ -229,7 +229,8 @@ def step_impl(context):
 
 @then('the agent should crawl jobs from We Work Remotely, Remotive, Arbeitnow, The Muse, and JSearch')
 def step_impl(context):
-    assert context.crawled_sources == {"We Work Remotely", "Remotive", "Arbeitnow", "The Muse", "JSearch"}, f"Crawled sources: {context.crawled_sources}"
+    expected = {"We Work Remotely", "Remotive", "Arbeitnow", "The Muse", "JSearch"}
+    assert expected.issubset(context.crawled_sources), f"Crawled sources: {context.crawled_sources}"
 
 @then('the agent should query search APIs using the query "{query}"')
 def step_impl(context, query):
@@ -325,14 +326,18 @@ def execute_pipeline(context, query, max_eval, min_salary, concurrency, desc_lim
     arbeitnow_list = getattr(context, 'arbeitnow_jobs', [])
     themuse_list = getattr(context, 'themuse_jobs', [])
     jsearch_list = getattr(context, 'jsearch_jobs', [])
+    himalayas_list = getattr(context, 'himalayas_jobs', [])
+    remoteok_list = getattr(context, 'remoteok_jobs', [])
     
-    context.all_fetched = wwr_list + remotive_list + arbeitnow_list + themuse_list + jsearch_list
-    context.crawled_sources = {"We Work Remotely", "Remotive", "Arbeitnow", "The Muse", "JSearch"}
+    context.all_fetched = wwr_list + remotive_list + arbeitnow_list + themuse_list + jsearch_list + himalayas_list + remoteok_list
+    context.crawled_sources = {"We Work Remotely", "Remotive", "Arbeitnow", "The Muse", "JSearch", "Himalayas", "Remote OK"}
 
     def mock_fetch_wwr(): return wwr_list
     def mock_fetch_remotive(): return remotive_list
     def mock_fetch_arbeitnow(): return arbeitnow_list
     def mock_fetch_themuse(): return themuse_list
+    def mock_fetch_himalayas(): return himalayas_list
+    def mock_fetch_remoteok(): return remoteok_list
     def mock_fetch_jsearch(job_titles_str, exclude_publishers=None):
         if not exclude_publishers:
             return jsearch_list
@@ -413,6 +418,8 @@ def execute_pipeline(context, query, max_eval, min_salary, concurrency, desc_lim
          patch('ingestion.fetch_arbeitnow_jobs', mock_fetch_arbeitnow), \
          patch('ingestion.fetch_themuse_jobs', mock_fetch_themuse), \
          patch('ingestion.fetch_jsearch_jobs', mock_fetch_jsearch), \
+         patch('ingestion.fetch_himalayas_jobs', mock_fetch_himalayas), \
+         patch('ingestion.fetch_remoteok_jobs', mock_fetch_remoteok), \
          patch('google.adk.runners.Runner.run_async', mock_runner_run_async), \
          patch('google.adk.tools.skill_toolset.RunSkillScriptTool.run_async', mock_run_skill_script_tool_run_async), \
          patch('sys.exit') as mock_sys_exit:

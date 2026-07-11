@@ -827,11 +827,13 @@ async def run_pipeline(
         job_titles_str,
         excluded_publishers
     ))
+    himalayas_task = asyncio.create_task(asyncio.to_thread(ingestion.fetch_himalayas_jobs))
+    remoteok_task = asyncio.create_task(asyncio.to_thread(ingestion.fetch_remoteok_jobs))
     
-    wwr_jobs, remotive_jobs, arbeitnow_jobs, themuse_jobs, jsearch_jobs = await asyncio.gather(
-        wwr_task, remotive_task, arbeitnow_task, themuse_task, jsearch_task
+    wwr_jobs, remotive_jobs, arbeitnow_jobs, themuse_jobs, jsearch_jobs, himalayas_jobs, remoteok_jobs = await asyncio.gather(
+        wwr_task, remotive_task, arbeitnow_task, themuse_task, jsearch_task, himalayas_task, remoteok_task
     )
-    all_jobs = wwr_jobs + remotive_jobs + arbeitnow_jobs + themuse_jobs + jsearch_jobs
+    all_jobs = wwr_jobs + remotive_jobs + arbeitnow_jobs + themuse_jobs + jsearch_jobs + himalayas_jobs + remoteok_jobs
     
     # Filter out jobs older than max_age days
     if max_age > 0:
