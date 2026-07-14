@@ -14,7 +14,10 @@ This skill performs an ATS (Applicant Tracking System) style evaluation on a sin
 ## Instructions
 Analyze the candidate's resume against the provided job description and evaluate their match suitability.
 
-1. **Evaluation Scope**: Evaluate strictly based on matching skills, programming languages, years of experience, and general job requirements.
+1. **Evaluation Scope & Constraints**:
+   - Evaluate strictly based on matching skills, programming languages, years of experience, and general job requirements.
+   - **Timezone & Location Constraints**: The candidate is located in the United States and is compatible with working in **Eastern (EST/EDT)**, **Central (CST/CDT)**, **Mountain (MST/MDT)**, or **Pacific (PST/PDT)** timezones.
+   - If the job description explicitly requires residency or working hours in a different region or timezone (e.g. CET, CEST, GMT, UTC+1, EMEA, Europe, UK, APAC, or countries outside the US), you **MUST** fail the evaluation: cap the `match_score` at **0** and state the timezone or geographic mismatch as the primary reason in the `explanation`.
 2. **Match Score Scale**: Rate the match from 0 to 100:
    - **80-100**: Excellent fit (matches all core tech stacks and experience level)
    - **50-79**: Moderate fit (matches some tech stack, minor gaps in experience or peripheral tools)
