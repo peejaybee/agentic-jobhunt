@@ -25,7 +25,7 @@ async def main():
     parser = argparse.ArgumentParser(description="ATS Remote Job Search and Resume Matcher Agent")
     parser.add_argument("--resume", required=True, help="Path to local PDF resume file")
     parser.add_argument("--titles", required=True, help="Comma-separated list of job titles to search (e.g., 'Python Developer, Software Engineer')")
-    parser.add_argument("--model", default="ollama_chat/qwen2.5-coder:7b", help="Ollama model to use in LiteLLM format (default: 'ollama_chat/qwen2.5-coder:7b')")
+    parser.add_argument("--model", default="ollama_chat/qwen2.5-coder:14b", help="Ollama model to use in LiteLLM format (default: 'ollama_chat/qwen2.5-coder:14b')")
     parser.add_argument("--max-eval", type=int, default=30, help="Maximum number of filtered jobs to rate using local LLM (default: 30)")
     parser.add_argument("--min-salary", type=int, default=150000, help="Minimum salary threshold in USD to keep a job (default: 150000)")
     parser.add_argument("--concurrency", type=int, default=3, help="Maximum concurrent LLM calls allowed (default: 3)")
