@@ -1,0 +1,39 @@
+---
+name: ats-validation
+description: Performs a validation check on ATS scores and explanations to catch hallucinations and timezone mismatches.
+metadata:
+  author: Google
+  license: Apache-2.0
+  version: 1.0.0
+---
+
+# ATS Validation Skill
+
+This skill performs a second-pass quality assurance check on an ATS evaluation to ensure it is accurate and does not contain skill hallucinations or timezone mismatches.
+
+## Instructions
+
+Analyze the candidate's resume, the job description, and the primary evaluation (score and explanation) to audit for errors.
+
+1. **Audit for Skill Hallucinations**:
+   - Verify that every technical skill or technology claimed as a match in the primary explanation is explicitly listed or clearly supported by the candidate's resume.
+   - If the primary explanation claims the candidate has experience or knowledge of key required technologies (e.g. Kotlin, Android, Jetpack, Meta Ads, etc.) that are NOT found in the resume, you must mark this as a hallucination.
+
+2. **Audit for Timezone & Location Mismatches**:
+   - The candidate is located in the United States and works in **Eastern (EST/EDT)**, **Central (CST/CDT)**, **Mountain (MST/MDT)**, or **Pacific (PST/PDT)** timezones.
+   - If the job description requires residency or working hours in a different region or timezone (such as CET, CEST, GMT, UTC+1, EMEA, Europe, UK, APAC, or countries outside the US) and the primary evaluator failed to penalize it, you must mark this as a constraint violation.
+
+3. **Validation Decision**:
+   - If any hallucination or timezone constraint violation is found, set `is_valid` to `false`, set `corrected_score` to `0`, and write `validation_notes` detailing the exact corrections made (e.g. "Validation failed: Candidate does not have Kotlin/Android experience as claimed" or "Validation failed: Timezone mismatch with CET").
+   - If the evaluation is accurate and supported by the resume, set `is_valid` to `true`, set `corrected_score` to the primary evaluator's score, and set `validation_notes` to a brief statement confirming the evaluation is correct.
+
+## Expected Output Format
+You MUST return your final response strictly as a JSON object matching this schema:
+```json
+{
+  "is_valid": true, // Boolean
+  "corrected_score": 85, // Integer from 0 to 100
+  "validation_notes": "Validation explanation here."
+}
+```
+Do NOT wrap the JSON in other markdown formatting outside of the standard JSON block. Ensure only valid JSON is returned.

@@ -371,6 +371,9 @@ def execute_pipeline(context, query, max_eval, min_salary, concurrency, desc_lim
             else:
                 yield MockEvent('{"match_score": 40, "explanation": "Low match"}')
                 
+        elif agent_name == "ats_validation_agent":
+            yield MockEvent('{"is_valid": true, "corrected_score": 90, "validation_notes": "Passed validation"}')
+            
         elif agent_name == "salary_extractor_agent":
             title = "Unknown"
             for t in ["Python Developer", "QA Engineer", "Software Engineer", "ML Engineer"]:
