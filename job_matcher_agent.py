@@ -1,7 +1,10 @@
 import argparse
 import asyncio
+import logging
 import os
 import sys
+
+logger = logging.getLogger(__name__)
 
 # Reconfigure stdout and stderr to UTF-8 to prevent Unicode encoding errors on Windows
 if hasattr(sys.stdout, "reconfigure"):
@@ -33,9 +36,9 @@ async def main():
     parser.add_argument("--max-age", type=int, default=5, help="Filter out jobs older than this many days (default: 5)")
     args = parser.parse_args()
     
-    print("=" * 60)
-    print(" ATS Remote Job Matcher & Scoring System (Multi-Skill Architecture)")
-    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info(" ATS Remote Job Matcher & Scoring System (Multi-Skill Architecture)")
+    logger.info("=" * 60)
     
     await orchestrator.run_pipeline(
         resume_path=args.resume,

@@ -1,6 +1,9 @@
+import logging
 import sqlite3
 import os
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 DB_FILE = "jobs_cache.db"
 
@@ -137,6 +140,6 @@ def cleanup_old_cache():
         cursor.execute("DELETE FROM ats_cache WHERE datetime(evaluated_at) < datetime('now', '-13 days', '-12 hours')")
         conn.commit()
     except Exception as e:
-        print(f"Warning: Failed to clean up old cache: {e}")
+        logger.warning("Failed to clean up old cache: %s", e)
     finally:
         conn.close()

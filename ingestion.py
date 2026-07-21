@@ -1,5 +1,6 @@
 import datetime
 import json
+import logging
 import xml.etree.ElementTree as ET
 import requests
 
@@ -7,10 +8,12 @@ import os
 import time
 from dotenv import load_dotenv
 
+logger = logging.getLogger(__name__)
+
 def fetch_weworkremotely_jobs() -> list[dict]:
     """Fetches jobs from We Work Remotely RSS feed."""
     url = "https://weworkremotely.com/remote-jobs.rss"
-    print("Fetching jobs from We Work Remotely...")
+    logger.info("Fetching jobs from We Work Remotely...")
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ATSJobMatcher/1.0"}
     
     try:
@@ -45,16 +48,16 @@ def fetch_weworkremotely_jobs() -> list[dict]:
                 "category": category
             })
         
-        print(f"Retrieved {len(jobs)} jobs from We Work Remotely.")
+        logger.info("Retrieved %s jobs from We Work Remotely.", len(jobs))
         return jobs
     except Exception as e:
-        print(f"Warning: Failed to fetch We Work Remotely jobs: {e}")
+        logger.warning("Failed to fetch We Work Remotely jobs: %s", e)
         return []
 
 def fetch_remotive_jobs() -> list[dict]:
     """Fetches jobs from Remotive API."""
     url = "https://remotive.com/api/remote-jobs"
-    print("Fetching jobs from Remotive API...")
+    logger.info("Fetching jobs from Remotive API...")
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ATSJobMatcher/1.0"}
     
     try:
@@ -75,16 +78,16 @@ def fetch_remotive_jobs() -> list[dict]:
                 "category": job.get("category", "")
             })
             
-        print(f"Retrieved {len(jobs)} jobs from Remotive API.")
+        logger.info("Retrieved %s jobs from Remotive API.", len(jobs))
         return jobs
     except Exception as e:
-        print(f"Warning: Failed to fetch Remotive jobs: {e}")
+        logger.warning("Failed to fetch Remotive jobs: %s", e)
         return []
 
 def fetch_arbeitnow_jobs() -> list[dict]:
     """Fetches remote jobs from Arbeitnow API."""
     url = "https://www.arbeitnow.com/api/job-board-api"
-    print("Fetching jobs from Arbeitnow API...")
+    logger.info("Fetching jobs from Arbeitnow API...")
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ATSJobMatcher/1.0"}
     
     try:
@@ -116,16 +119,16 @@ def fetch_arbeitnow_jobs() -> list[dict]:
                 "category": ", ".join(job.get("tags", [])) if job.get("tags") else "Remote Job"
             })
             
-        print(f"Retrieved {len(jobs)} remote jobs from Arbeitnow API.")
+        logger.info("Retrieved %s remote jobs from Arbeitnow API.", len(jobs))
         return jobs
     except Exception as e:
-        print(f"Warning: Failed to fetch Arbeitnow jobs: {e}")
+        logger.warning("Failed to fetch Arbeitnow jobs: %s", e)
         return []
 
 def fetch_themuse_jobs() -> list[dict]:
     """Fetches jobs from The Muse API."""
     url = "https://www.themuse.com/api/public/jobs?location=Remote&page=1"
-    print("Fetching jobs from The Muse API...")
+    logger.info("Fetching jobs from The Muse API...")
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ATSJobMatcher/1.0"}
     
     try:
@@ -160,22 +163,22 @@ def fetch_themuse_jobs() -> list[dict]:
                 "category": category_str
             })
             
-        print(f"Retrieved {len(jobs)} jobs from The Muse API.")
+        logger.info("Retrieved %s jobs from The Muse API.", len(jobs))
         return jobs
     except Exception as e:
-        print(f"Warning: Failed to fetch The Muse jobs: {e}")
+        logger.warning("Failed to fetch The Muse jobs: %s", e)
         return []
 
 def fetch_jsearch_jobs(job_titles_str: str, exclude_publishers: list[str] = None) -> list[dict]:
     """Fetches jobs from JSearch API natively in Python."""
-    print("Fetching jobs from JSearch API...")
+    logger.info("Fetching jobs from JSearch API...")
     load_dotenv()
     
     api_key = os.getenv("X-RapidAPI-Key") or os.getenv("X_RAPIDAPI_KEY")
     api_host = os.getenv("X-RapidAPI-Host") or os.getenv("X_RAPIDAPI_HOST") or "jsearch.p.rapidapi.com"
     
     if not api_key or "dummy" in api_key.lower():
-        print("Warning: No valid X-RapidAPI-Key found in environment or .env file.")
+        logger.warning("No valid X-RapidAPI-Key found in environment or .env file.")
         return []
 
     # Use the first job title search query as the query for JSearch
@@ -215,14 +218,14 @@ def fetch_jsearch_jobs(job_titles_str: str, exclude_publishers: list[str] = None
                 except (requests.exceptions.RequestException, requests.exceptions.Timeout) as req_err:
                     if attempt == MAX_RETRIES - 1:
                         raise req_err
-                    print(f"JSearch API request attempt {attempt + 1} failed: {req_err}. Retrying in {2 ** attempt}s...")
+                    logger.warning("JSearch API request attempt %s failed: %s. Retrying in %ss...", attempt + 1, req_err, 2 ** attempt)
                     time.sleep(2 ** attempt)
             
             response_json = r.json()
             if response_json.get("status") == "ERROR":
                 error_info = response_json.get("error", {})
                 error_msg = error_info.get("message") or "Unknown JSearch API error"
-                print(f"Warning: JSearch API returned error status: {error_msg}")
+                logger.warning("JSearch API returned error status: %s", error_msg)
                 break
                 
             data_obj = response_json.get("data")
@@ -274,10 +277,10 @@ def fetch_jsearch_jobs(job_titles_str: str, exclude_publishers: list[str] = None
                 "category": category
             })
             
-        print(f"Retrieved {len(normalized_jobs)} jobs from JSearch API.")
+        logger.info("Retrieved %s jobs from JSearch API.", len(normalized_jobs))
         return normalized_jobs
     except Exception as e:
-        print(f"Warning: Failed to fetch JSearch jobs: {e}")
+        logger.warning("Failed to fetch JSearch jobs: %s", e)
         return []
 
 def fetch_himalayas_jobs() -> list[dict]:
@@ -315,10 +318,10 @@ def fetch_himalayas_jobs() -> list[dict]:
                 "publication_date": pub_date,
                 "category": category
             })
-        print(f"Retrieved {len(jobs)} jobs from Himalayas API.")
+        logger.info("Retrieved %s jobs from Himalayas API.", len(jobs))
         return jobs
     except Exception as e:
-        print(f"Warning: Failed to fetch Himalayas jobs: {e}")
+        logger.warning("Failed to fetch Himalayas jobs: %s", e)
         return []
 
 def fetch_remoteok_jobs() -> list[dict]:
@@ -334,7 +337,7 @@ def fetch_remoteok_jobs() -> list[dict]:
         
         # Remote OK returns a list where the first item is a metadata dictionary (has "legal" key)
         if not isinstance(raw_data, list) or len(raw_data) <= 1:
-            print("Remote OK API returned empty or invalid data.")
+            logger.warning("Remote OK API returned empty or invalid data.")
             return []
             
         jobs = []
@@ -357,8 +360,8 @@ def fetch_remoteok_jobs() -> list[dict]:
                 "category": category
             })
             
-        print(f"Retrieved {len(jobs)} jobs from Remote OK API.")
+        logger.info("Retrieved %s jobs from Remote OK API.", len(jobs))
         return jobs
     except Exception as e:
-        print(f"Warning: Failed to fetch Remote OK jobs: {e}")
+        logger.warning("Failed to fetch Remote OK jobs: %s", e)
         return []

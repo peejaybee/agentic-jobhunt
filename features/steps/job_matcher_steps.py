@@ -199,8 +199,11 @@ def step_impl(context):
 
     import io
     context.captured_stdout = io.StringIO()
+    context.captured_stderr = io.StringIO()
     old_stdout = sys.stdout
+    old_stderr = sys.stderr
     sys.stdout = context.captured_stdout
+    sys.stderr = context.captured_stderr
 
     try:
         with patch('google.adk.runners.Runner.run_async', mock_runner_run_async), \
@@ -226,6 +229,7 @@ def step_impl(context):
             context.rated_job_explanation = rated_job.get("explanation")
     finally:
         sys.stdout = old_stdout
+        sys.stderr = old_stderr
 
 @then('the agent should crawl jobs from We Work Remotely, Remotive, Arbeitnow, The Muse, and JSearch')
 def step_impl(context):
@@ -301,7 +305,7 @@ def step_impl(context, title):
 
 @then('the agent should detect the JSON parsing error')
 def step_impl(context):
-    log_content = context.captured_stdout.getvalue()
+    log_content = context.captured_stdout.getvalue() + context.captured_stderr.getvalue()
     assert "Attempt 1 failed for Senior Python Developer scoring" in log_content or "Attempt 1 failed for Senior Python Developer salary check" in log_content, f"Retry logs not found: {log_content}"
 
 @then('the agent should query the LLM again with the syntax error and corrective instructions under the same session ID')
@@ -457,10 +461,10 @@ def execute_pipeline(context, query, max_eval, min_salary, concurrency, desc_lim
             context.kept_jobs = res_jobs
             return res_jobs
 
-        with patch('orchestrator.run_matching_pipeline', hook_run_matching_pipeline), \
-             patch('orchestrator.filter_job_via_skill', hook_filter_job_via_skill), \
-             patch('orchestrator.filter_excluded_employers', hook_filter_excluded_employers), \
-             patch('orchestrator.extract_resume_text', mock_extract_resume_text):
+        with patch('orchestrator.pipeline.run_matching_pipeline', hook_run_matching_pipeline), \
+             patch('orchestrator.pipeline.filter_job_via_skill', hook_filter_job_via_skill), \
+             patch('orchestrator.pipeline.filter_excluded_employers', hook_filter_excluded_employers), \
+             patch('orchestrator.pipeline.extract_resume_text', mock_extract_resume_text):
             
             loop.run_until_complete(
                 orchestrator.run_pipeline(
