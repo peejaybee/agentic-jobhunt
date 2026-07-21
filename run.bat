@@ -17,18 +17,15 @@ if not exist "%RESUME_PATH%" (
 
 set /p JOB_TITLES="Enter comma-separated job titles to search (e.g. Python Developer, Django Engineer): "
 
-echo.
 echo Select the Ollama model to use:
-echo 1) llama3.1:latest (Default)
-echo 2) gemma4:12b
-echo 3) qwen3.5:latest
-echo 4) Custom name
-set /p MODEL_CHOICE="Enter option (1-4): "
+echo 1) qwen2.5-coder:14b (Default)
+echo 2) llama3.1:latest
+echo 3) Custom name
+set /p MODEL_CHOICE="Enter option (1-3): "
 
-set OLLAMA_MODEL=ollama_chat/llama3.1:latest
-if "%MODEL_CHOICE%"=="2" set OLLAMA_MODEL=ollama_chat/gemma4:12b
-if "%MODEL_CHOICE%"=="3" set OLLAMA_MODEL=ollama_chat/qwen3.5:latest
-if "%MODEL_CHOICE%"=="4" (
+set OLLAMA_MODEL=ollama_chat/qwen2.5-coder:14b
+if "%MODEL_CHOICE%"=="2" set OLLAMA_MODEL=ollama_chat/llama3.1:latest
+if "%MODEL_CHOICE%"=="3" (
     set /p CUSTOM_MODEL="Enter custom Ollama model name (e.g. deepseek-r1:8b): "
     set OLLAMA_MODEL=ollama_chat/%CUSTOM_MODEL%
 )

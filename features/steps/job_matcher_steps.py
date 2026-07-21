@@ -199,8 +199,11 @@ def step_impl(context):
 
     import io
     context.captured_stdout = io.StringIO()
+    context.captured_stderr = io.StringIO()
     old_stdout = sys.stdout
+    old_stderr = sys.stderr
     sys.stdout = context.captured_stdout
+    sys.stderr = context.captured_stderr
 
     try:
         with patch('google.adk.runners.Runner.run_async', mock_runner_run_async), \
@@ -226,10 +229,12 @@ def step_impl(context):
             context.rated_job_explanation = rated_job.get("explanation")
     finally:
         sys.stdout = old_stdout
+        sys.stderr = old_stderr
 
 @then('the agent should crawl jobs from We Work Remotely, Remotive, Arbeitnow, The Muse, and JSearch')
 def step_impl(context):
-    assert context.crawled_sources == {"We Work Remotely", "Remotive", "Arbeitnow", "The Muse", "JSearch"}, f"Crawled sources: {context.crawled_sources}"
+    expected = {"We Work Remotely", "Remotive", "Arbeitnow", "The Muse", "JSearch"}
+    assert expected.issubset(context.crawled_sources), f"Crawled sources: {context.crawled_sources}"
 
 @then('the agent should query search APIs using the query "{query}"')
 def step_impl(context, query):
@@ -300,7 +305,7 @@ def step_impl(context, title):
 
 @then('the agent should detect the JSON parsing error')
 def step_impl(context):
-    log_content = context.captured_stdout.getvalue()
+    log_content = context.captured_stdout.getvalue() + context.captured_stderr.getvalue()
     assert "Attempt 1 failed for Senior Python Developer scoring" in log_content or "Attempt 1 failed for Senior Python Developer salary check" in log_content, f"Retry logs not found: {log_content}"
 
 @then('the agent should query the LLM again with the syntax error and corrective instructions under the same session ID')
@@ -325,14 +330,18 @@ def execute_pipeline(context, query, max_eval, min_salary, concurrency, desc_lim
     arbeitnow_list = getattr(context, 'arbeitnow_jobs', [])
     themuse_list = getattr(context, 'themuse_jobs', [])
     jsearch_list = getattr(context, 'jsearch_jobs', [])
+    himalayas_list = getattr(context, 'himalayas_jobs', [])
+    remoteok_list = getattr(context, 'remoteok_jobs', [])
     
-    context.all_fetched = wwr_list + remotive_list + arbeitnow_list + themuse_list + jsearch_list
-    context.crawled_sources = {"We Work Remotely", "Remotive", "Arbeitnow", "The Muse", "JSearch"}
+    context.all_fetched = wwr_list + remotive_list + arbeitnow_list + themuse_list + jsearch_list + himalayas_list + remoteok_list
+    context.crawled_sources = {"We Work Remotely", "Remotive", "Arbeitnow", "The Muse", "JSearch", "Himalayas", "Remote OK"}
 
     def mock_fetch_wwr(): return wwr_list
     def mock_fetch_remotive(): return remotive_list
     def mock_fetch_arbeitnow(): return arbeitnow_list
     def mock_fetch_themuse(): return themuse_list
+    def mock_fetch_himalayas(): return himalayas_list
+    def mock_fetch_remoteok(): return remoteok_list
     def mock_fetch_jsearch(job_titles_str, exclude_publishers=None):
         if not exclude_publishers:
             return jsearch_list
@@ -366,6 +375,9 @@ def execute_pipeline(context, query, max_eval, min_salary, concurrency, desc_lim
             else:
                 yield MockEvent('{"match_score": 40, "explanation": "Low match"}')
                 
+        elif agent_name == "ats_validation_agent":
+            yield MockEvent('{"is_valid": true, "corrected_score": 90, "validation_notes": "Passed validation"}')
+            
         elif agent_name == "salary_extractor_agent":
             title = "Unknown"
             for t in ["Python Developer", "QA Engineer", "Software Engineer", "ML Engineer"]:
@@ -413,6 +425,8 @@ def execute_pipeline(context, query, max_eval, min_salary, concurrency, desc_lim
          patch('ingestion.fetch_arbeitnow_jobs', mock_fetch_arbeitnow), \
          patch('ingestion.fetch_themuse_jobs', mock_fetch_themuse), \
          patch('ingestion.fetch_jsearch_jobs', mock_fetch_jsearch), \
+         patch('ingestion.fetch_himalayas_jobs', mock_fetch_himalayas), \
+         patch('ingestion.fetch_remoteok_jobs', mock_fetch_remoteok), \
          patch('google.adk.runners.Runner.run_async', mock_runner_run_async), \
          patch('google.adk.tools.skill_toolset.RunSkillScriptTool.run_async', mock_run_skill_script_tool_run_async), \
          patch('sys.exit') as mock_sys_exit:
@@ -447,10 +461,10 @@ def execute_pipeline(context, query, max_eval, min_salary, concurrency, desc_lim
             context.kept_jobs = res_jobs
             return res_jobs
 
-        with patch('orchestrator.run_matching_pipeline', hook_run_matching_pipeline), \
-             patch('orchestrator.filter_job_via_skill', hook_filter_job_via_skill), \
-             patch('orchestrator.filter_excluded_employers', hook_filter_excluded_employers), \
-             patch('orchestrator.extract_resume_text', mock_extract_resume_text):
+        with patch('orchestrator.pipeline.run_matching_pipeline', hook_run_matching_pipeline), \
+             patch('orchestrator.pipeline.filter_job_via_skill', hook_filter_job_via_skill), \
+             patch('orchestrator.pipeline.filter_excluded_employers', hook_filter_excluded_employers), \
+             patch('orchestrator.pipeline.extract_resume_text', mock_extract_resume_text):
             
             loop.run_until_complete(
                 orchestrator.run_pipeline(

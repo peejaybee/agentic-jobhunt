@@ -1,7 +1,10 @@
 import argparse
 import asyncio
+import logging
 import os
 import sys
+
+logger = logging.getLogger(__name__)
 
 # Reconfigure stdout and stderr to UTF-8 to prevent Unicode encoding errors on Windows
 if hasattr(sys.stdout, "reconfigure"):
@@ -25,7 +28,7 @@ async def main():
     parser = argparse.ArgumentParser(description="ATS Remote Job Search and Resume Matcher Agent")
     parser.add_argument("--resume", required=True, help="Path to local PDF resume file")
     parser.add_argument("--titles", required=True, help="Comma-separated list of job titles to search (e.g., 'Python Developer, Software Engineer')")
-    parser.add_argument("--model", default="ollama_chat/llama3.1:latest", help="Ollama model to use in LiteLLM format (default: 'ollama_chat/llama3.1:latest')")
+    parser.add_argument("--model", default="ollama_chat/qwen2.5-coder:14b", help="Ollama model to use in LiteLLM format (default: 'ollama_chat/qwen2.5-coder:14b')")
     parser.add_argument("--max-eval", type=int, default=30, help="Maximum number of filtered jobs to rate using local LLM (default: 30)")
     parser.add_argument("--min-salary", type=int, default=150000, help="Minimum salary threshold in USD to keep a job (default: 150000)")
     parser.add_argument("--concurrency", type=int, default=3, help="Maximum concurrent LLM calls allowed (default: 3)")
@@ -33,9 +36,9 @@ async def main():
     parser.add_argument("--max-age", type=int, default=5, help="Filter out jobs older than this many days (default: 5)")
     args = parser.parse_args()
     
-    print("=" * 60)
-    print(" ATS Remote Job Matcher & Scoring System (Multi-Skill Architecture)")
-    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info(" ATS Remote Job Matcher & Scoring System (Multi-Skill Architecture)")
+    logger.info("=" * 60)
     
     await orchestrator.run_pipeline(
         resume_path=args.resume,

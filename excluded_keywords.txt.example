@@ -11,5 +11,15 @@ outlier
 scale ai
 remotasks
 ai evaluator
+ai interaction evaluator
+interaction evaluator
+code evaluator
+prompt evaluator
+model evaluator
+ai code evaluator
+rlhf
+ai reviewer
+ai feedback
+model trainer
 evaluation consultant
 24-mag

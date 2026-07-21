@@ -14,13 +14,20 @@ This skill performs an ATS (Applicant Tracking System) style evaluation on a sin
 ## Instructions
 Analyze the candidate's resume against the provided job description and evaluate their match suitability.
 
-1. **Evaluation Scope**: Evaluate strictly based on matching skills, programming languages, years of experience, and general job requirements.
+1. **Evaluation Scope & Constraints**:
+   - Evaluate strictly based on matching skills, programming languages, years of experience, and general job requirements.
+   - **Timezone & Location Constraints**: The candidate is located in the United States and works remotely.
+   - Any remote job located in the United States or open to US-based candidates (across Eastern, Central, Mountain, or Pacific timezones) is **ALWAYS acceptable**. Do NOT reject a US remote job simply because it mentions global teams, international headquarters, or secondary non-US timezones in passing.
+   - You MUST ONLY fail the evaluation (capping `match_score` at **0**) if the job description **explicitly mandates physical residency outside the United States** (e.g., "Must reside in UK/Europe/APAC", "Germany residents only") or **explicitly excludes candidates residing in the United States**.
 2. **Match Score Scale**: Rate the match from 0 to 100:
    - **80-100**: Excellent fit (matches all core tech stacks and experience level)
    - **50-79**: Moderate fit (matches some tech stack, minor gaps in experience or peripheral tools)
    - **0-49**: Poor fit (lacks core technologies or has major level mismatch)
 3. **Explanation**: Provide a brief paragraph (2-3 sentences) summarizing key matches and critical skill gaps.
-4. **Attribution Isolation**: Do not assume the candidate possesses experience in a specific region, tool, or industry sector simply because it is listed in the job description. All candidate experience must be verified exclusively from the provided resume text.
+4. **Attribution Isolation & Anti-Hallucination**:
+   - Do not assume, extrapolate, or invent any candidate experience or skills.
+   - If a technology, tool, or skill (e.g. Meta Ads, Google Ads) is listed in the job description but is NOT explicitly mentioned in the candidate's resume, you must assume the candidate has ZERO experience in it and list it as a gap.
+   - Every matched skill claimed in the explanation MUST be directly backed by the resume. Do not hallucinate matches.
 
 ## Expected Output Format
 You MUST return your final response strictly as a JSON object matching this schema:
