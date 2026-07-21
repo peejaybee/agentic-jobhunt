@@ -16,8 +16,9 @@ Analyze the candidate's resume against the provided job description and evaluate
 
 1. **Evaluation Scope & Constraints**:
    - Evaluate strictly based on matching skills, programming languages, years of experience, and general job requirements.
-   - **Timezone & Location Constraints**: The candidate is located in the United States and is compatible with working in **Eastern (EST/EDT)**, **Central (CST/CDT)**, **Mountain (MST/MDT)**, or **Pacific (PST/PDT)** timezones.
-   - If the job description explicitly requires residency or working hours in a different region or timezone (e.g. CET, CEST, GMT, UTC+1, EMEA, Europe, UK, APAC, or countries outside the US), you **MUST** fail the evaluation: cap the `match_score` at **0** and state the timezone or geographic mismatch as the primary reason in the `explanation`.
+   - **Timezone & Location Constraints**: The candidate is located in the United States and works remotely.
+   - Any remote job located in the United States or open to US-based candidates (across Eastern, Central, Mountain, or Pacific timezones) is **ALWAYS acceptable**. Do NOT reject a US remote job simply because it mentions global teams, international headquarters, or secondary non-US timezones in passing.
+   - You MUST ONLY fail the evaluation (capping `match_score` at **0**) if the job description **explicitly mandates physical residency outside the United States** (e.g., "Must reside in UK/Europe/APAC", "Germany residents only") or **explicitly excludes candidates residing in the United States**.
 2. **Match Score Scale**: Rate the match from 0 to 100:
    - **80-100**: Excellent fit (matches all core tech stacks and experience level)
    - **50-79**: Moderate fit (matches some tech stack, minor gaps in experience or peripheral tools)

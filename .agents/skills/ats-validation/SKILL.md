@@ -20,8 +20,9 @@ Analyze the candidate's resume, the job description, and the primary evaluation 
    - If the primary explanation claims the candidate has experience or knowledge of key required technologies (e.g. Kotlin, Android, Jetpack, Meta Ads, etc.) that are NOT found in the resume, you must mark this as a hallucination.
 
 2. **Audit for Timezone & Location Mismatches**:
-   - The candidate is located in the United States and works in **Eastern (EST/EDT)**, **Central (CST/CDT)**, **Mountain (MST/MDT)**, or **Pacific (PST/PDT)** timezones.
-   - If the job description requires residency or working hours in a different region or timezone (such as CET, CEST, GMT, UTC+1, EMEA, Europe, UK, APAC, or countries outside the US) and the primary evaluator failed to penalize it, you must mark this as a constraint violation.
+   - The candidate is located in the United States and works remotely.
+   - Any remote job located in the United States or open to US candidates is **ALWAYS acceptable**.
+   - ONLY mark a location constraint violation if the job description **explicitly requires physical residency outside the United States** (e.g. "Must reside in UK/Europe/APAC", "Germany only") or **explicitly excludes US residents**. Do NOT flag a violation for US remote jobs that mention global teams or international headquarters.
 
 3. **Validation Decision**:
    - If any hallucination or timezone constraint violation is found, set `is_valid` to `false`, set `corrected_score` to `0`, and write `validation_notes` detailing the exact corrections made (e.g. "Validation failed: Candidate does not have Kotlin/Android experience as claimed" or "Validation failed: Timezone mismatch with CET").
