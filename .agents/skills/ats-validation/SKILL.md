@@ -22,7 +22,7 @@ Analyze the candidate's resume, the job description, and the primary evaluation 
 2. **Audit for Timezone & Location Mismatches**:
    - The candidate is located in the United States and works remotely.
    - Any remote job located in the United States or open to US candidates is **ALWAYS acceptable**.
-   - ONLY mark a location constraint violation if the job description **explicitly requires physical residency outside the United States** (e.g. "Must reside in UK/Europe/APAC", "Germany only") or **explicitly excludes US residents**. Do NOT flag a violation for US remote jobs that mention global teams or international headquarters.
+   - ONLY mark a location constraint violation if the job description **explicitly requires physical residency outside the United States** (e.g. "Must reside in UK/Europe/APAC", "Germany only") or **explicitly excludes US residents**. Do NOT flag a violation for US remote jobs that mention global teams, international headquarters, or general legal/privacy notices referencing other countries (e.g., Australian privacy disclaimers).
 
 3. **Validation Decision**:
    - If any hallucination or timezone constraint violation is found, set `is_valid` to `false`, set `corrected_score` to `0`, and write `validation_notes` detailing the exact corrections made (e.g. "Validation failed: Candidate does not have Kotlin/Android experience as claimed" or "Validation failed: Timezone mismatch with CET").
