@@ -17,4 +17,5 @@ excluded_employers_test.txt
 excluded_keywords_test.txt
 excluded_publishers.txt
 excluded_publishers_test.txt
+rejection_stats.json
 

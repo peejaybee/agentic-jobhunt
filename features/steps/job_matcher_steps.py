@@ -76,7 +76,7 @@ def step_impl(context):
         publisher = row['Publisher'] if 'Publisher' in row.headings else ""
 
         import datetime
-        pub_date = row['Publication Date'] if 'Publication Date' in row.headings else "Tue, 23 Jun 2026 12:00:00 GMT"
+        pub_date = row['Publication Date'] if 'Publication Date' in row.headings else (datetime.datetime.utcnow() - datetime.timedelta(days=1)).strftime("%a, %d %b %Y %H:%M:%S GMT")
         if pub_date == "today":
             pub_date = datetime.datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S GMT")
         elif pub_date == "10 days ago":
@@ -441,15 +441,15 @@ def execute_pipeline(context, query, max_eval, min_salary, concurrency, desc_lim
             return context.resume_text
 
         original_run_matching_pipeline = orchestrator.run_matching_pipeline
-        async def hook_run_matching_pipeline(resume_text, jobs, model_name, max_eval, min_salary, concurrency, desc_limit):
-            res = await original_run_matching_pipeline(resume_text, jobs, model_name, max_eval, min_salary, concurrency, desc_limit)
+        async def hook_run_matching_pipeline(resume_text, jobs, model_name, max_eval, min_salary, concurrency, desc_limit, *args, **kwargs):
+            res = await original_run_matching_pipeline(resume_text, jobs, model_name, max_eval, min_salary, concurrency, desc_limit, *args, **kwargs)
             context.evaluated_jobs = res
             return res
 
         original_filter_job_via_skill = orchestrator.filter_job_via_skill
         context.passed_jobs = []
-        async def hook_filter_job_via_skill(job, idx, total, model_name, semaphore, min_salary_threshold, desc_limit):
-            res_job, passed = await original_filter_job_via_skill(job, idx, total, model_name, semaphore, min_salary_threshold, desc_limit)
+        async def hook_filter_job_via_skill(job, idx, total, model_name, semaphore, min_salary_threshold, desc_limit, *args, **kwargs):
+            res_job, passed = await original_filter_job_via_skill(job, idx, total, model_name, semaphore, min_salary_threshold, desc_limit, *args, **kwargs)
             if passed:
                 context.passed_jobs.append(res_job)
             return res_job, passed

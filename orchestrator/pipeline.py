@@ -22,9 +22,41 @@ from .agents import (
 )
 from .dashboard import generate_dashboard
 
+import json
+
 logger = logging.getLogger(__name__)
 
 _WORKSPACE_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+STATS_FILE_PATH = os.path.join(_WORKSPACE_ROOT, "rejection_stats.json")
+
+
+def load_rejection_stats() -> dict:
+    default_stats = {
+        "keyword_excluded": 0,
+        "employer_excluded": 0,
+        "missing_salary": 0,
+        "salary_too_low": 0
+    }
+    if not os.path.exists(STATS_FILE_PATH):
+        return default_stats
+    try:
+        with open(STATS_FILE_PATH, "r", encoding="utf-8") as f:
+            stats = json.load(f)
+            for k in default_stats:
+                if k not in stats:
+                    stats[k] = 0
+            return stats
+    except Exception as e:
+        logger.warning("Error reading rejection stats JSON file: %s. Starting fresh.", e)
+        return default_stats
+
+
+def save_rejection_stats(stats: dict):
+    try:
+        with open(STATS_FILE_PATH, "w", encoding="utf-8") as f:
+            json.dump(stats, f, indent=2)
+    except Exception as e:
+        logger.warning("Error writing rejection stats JSON file: %s", e)
 
 
 def extract_resume_text(pdf_path: str) -> str:
@@ -40,7 +72,7 @@ def extract_resume_text(pdf_path: str) -> str:
 
 
 async def run_matching_pipeline(
-    resume_text, jobs, model_name, max_eval, min_salary, concurrency, desc_limit
+    resume_text, jobs, model_name, max_eval, min_salary, concurrency, desc_limit, rejection_stats=None
 ):
     code_executor = UnsafeLocalCodeExecutor()
     semaphore = asyncio.Semaphore(concurrency)
@@ -52,6 +84,10 @@ async def run_matching_pipeline(
     employers_file = os.path.abspath(os.path.join(_WORKSPACE_ROOT, file_name))
     kept_jobs = filter_excluded_employers(jobs, employers_file)
 
+    employer_rejected = total_jobs - len(kept_jobs)
+    if rejection_stats is not None:
+        rejection_stats["employer_excluded"] = rejection_stats.get("employer_excluded", 0) + employer_rejected
+
     logger.info("Employer filter completed. %s out of %s jobs kept.", len(kept_jobs), total_jobs)
 
     if not kept_jobs:
@@ -61,14 +97,22 @@ async def run_matching_pipeline(
     total_kept = len(kept_jobs)
     logger.info("Running salary filter on all %s matching jobs (threshold: $%s, concurrency: %s) using ADK 'applying-compensation-filter' skill...", total_kept, f"{min_salary:,}", concurrency)
 
+    salary_rejections = []
     for i, job in enumerate(kept_jobs):
         task = asyncio.create_task(
-            filter_job_via_skill(job, i + 1, total_kept, model_name, semaphore, min_salary, desc_limit)
+            filter_job_via_skill(job, i + 1, total_kept, model_name, semaphore, min_salary, desc_limit, salary_rejections)
         )
         filter_tasks.append(task)
 
     filter_results = await asyncio.gather(*filter_tasks)
     passed_jobs = [job for job, passed in filter_results if passed]
+
+    if rejection_stats is not None:
+        for status in salary_rejections:
+            if status == "missing_salary":
+                rejection_stats["missing_salary"] = rejection_stats.get("missing_salary", 0) + 1
+            elif status == "salary_too_low":
+                rejection_stats["salary_too_low"] = rejection_stats.get("salary_too_low", 0) + 1
 
     logger.info("Salary filter completed. %s out of %s jobs passed the $%s+ salary requirement.", len(passed_jobs), total_kept, f"{min_salary:,}")
 
@@ -183,15 +227,33 @@ async def run_pipeline(
     skipped = len(matching_jobs) - len(filtered_jobs)
     logger.info("Found %s matching jobs out of %s total listings (skipped %s via keyword exclusion).", len(filtered_jobs), len(all_jobs), skipped)
 
+    current_stats = {
+        "keyword_excluded": skipped,
+        "employer_excluded": 0,
+        "missing_salary": 0,
+        "salary_too_low": 0
+    }
+
     if not filtered_jobs:
         logger.info("No matching jobs found in feeds for the specified titles.")
+        cumulative_stats = load_rejection_stats()
+        for k in current_stats:
+            cumulative_stats[k] += current_stats[k]
+        save_rejection_stats(cumulative_stats)
+
         output_path = generate_dashboard(
             rated_jobs=[],
             resume_path=resume_path,
             searched_keywords=job_titles_str,
             total_found=0,
-            total_evaluated=0
+            total_evaluated=0,
+            rejection_stats=cumulative_stats
         )
+        logger.info("=" * 60)
+        logger.info("Cumulative Rejection Statistics:")
+        for key, val in cumulative_stats.items():
+            logger.info("  %s: %s (added %s in this run)", key.replace("_", " ").title(), val, current_stats[key])
+        logger.info("=" * 60)
         logger.info("Generated empty dashboard: %s", output_path)
         webbrowser.open(f"file:///{output_path}")
         return
@@ -204,20 +266,32 @@ async def run_pipeline(
             max_eval=max_eval,
             min_salary=min_salary,
             concurrency=concurrency,
-            desc_limit=desc_limit
+            desc_limit=desc_limit,
+            rejection_stats=current_stats
         )
     except Exception as e:
         logger.error("Critical Error in rating pipeline: %s", e)
         sys.exit(1)
+        return
+
+    cumulative_stats = load_rejection_stats()
+    for k in current_stats:
+        cumulative_stats[k] += current_stats[k]
+    save_rejection_stats(cumulative_stats)
 
     output_path = generate_dashboard(
         rated_jobs=rated_jobs,
         resume_path=resume_path,
         searched_keywords=job_titles_str,
         total_found=len(filtered_jobs),
-        total_evaluated=min(len(filtered_jobs), max_eval)
+        total_evaluated=min(len(filtered_jobs), max_eval),
+        rejection_stats=cumulative_stats
     )
 
+    logger.info("=" * 60)
+    logger.info("Cumulative Rejection Statistics:")
+    for key, val in cumulative_stats.items():
+        logger.info("  %s: %s (added %s in this run)", key.replace("_", " ").title(), val, current_stats[key])
     logger.info("=" * 60)
     logger.info("Dashboard successfully generated!")
     logger.info("Filename: %s", output_path)

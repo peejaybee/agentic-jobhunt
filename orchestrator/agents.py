@@ -335,7 +335,7 @@ async def evaluate_and_validate_single_job(
 
 
 async def filter_job_via_skill(
-    job, idx, total, model_name, semaphore, min_salary_threshold=150000, desc_limit=10000
+    job, idx, total, model_name, semaphore, min_salary_threshold=150000, desc_limit=10000, salary_rejections=None
 ):
     async with semaphore:
         job_url = job.get("url", "")
@@ -346,6 +346,11 @@ async def filter_job_via_skill(
                 max_salary = cached.get("max_salary_usd", 0.0)
                 min_salary = cached.get("min_salary_usd", 0.0)
                 passed = has_salary and max_salary >= min_salary_threshold
+                if not passed and salary_rejections is not None:
+                    if not has_salary:
+                        salary_rejections.append("missing_salary")
+                    else:
+                        salary_rejections.append("salary_too_low")
                 if not has_salary:
                     reason = "No salary range or pay range is listed in the posting."
                 elif not passed:
@@ -458,6 +463,11 @@ async def filter_job_via_skill(
                 if job_url:
                     cache.set_cached_salary(job_url, has_salary, min_salary, max_salary, explanation)
                 passed = has_salary and max_salary >= min_salary_threshold
+                if not passed and salary_rejections is not None:
+                    if not has_salary:
+                        salary_rejections.append("missing_salary")
+                    else:
+                        salary_rejections.append("salary_too_low")
                 if not has_salary:
                     reason = "No salary range or pay range is listed in the posting."
                 elif not passed:
@@ -469,7 +479,11 @@ async def filter_job_via_skill(
                 return job, passed
             else:
                 logger.warning("[%s/%s] Failed to retrieve valid salary JSON for %s after retries.", idx, total, job['title'])
+                if salary_rejections is not None:
+                    salary_rejections.append("missing_salary")
                 return job, False
         except Exception as e:
             logger.error("[%s/%s] Error filtering job %s: %s", idx, total, job['title'], e)
+            if salary_rejections is not None:
+                salary_rejections.append("missing_salary")
             return job, False

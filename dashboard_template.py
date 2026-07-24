@@ -490,6 +490,34 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 </div>
             </div>
         </div>
+        
+        <!-- Filter Statistics Card -->
+        <div class="summary-card" style="margin-top: -1.5rem; margin-bottom: 2.5rem; border-color: rgba(239, 68, 68, 0.15);">
+            <div class="summary-info">
+                <div class="summary-title" style="color: var(--danger); font-weight: 700;">Cumulative Rejection Statistics</div>
+                <div class="summary-value" style="font-size: 0.95rem; font-weight: 400; color: var(--text-secondary);">
+                    Overview of listings excluded during automated pipeline stages (all runs).
+                </div>
+            </div>
+            <div class="stats-group" style="flex-wrap: wrap; gap: 1.5rem;">
+                <div class="stat-item" style="min-width: 120px;">
+                    <div class="stat-label">Keyword Excluded</div>
+                    <div class="stat-val" style="color: var(--danger);">{keyword_excluded}</div>
+                </div>
+                <div class="stat-item" style="min-width: 120px;">
+                    <div class="stat-label">Employer Excluded</div>
+                    <div class="stat-val" style="color: var(--danger);">{employer_excluded}</div>
+                </div>
+                <div class="stat-item" style="min-width: 120px;">
+                    <div class="stat-label">Missing Salary</div>
+                    <div class="stat-val" style="color: var(--danger);">{missing_salary}</div>
+                </div>
+                <div class="stat-item" style="min-width: 120px;">
+                    <div class="stat-label">Salary Too Low</div>
+                    <div class="stat-val" style="color: var(--danger);">{salary_too_low}</div>
+                </div>
+            </div>
+        </div>
 
         <!-- Matches List -->
         <div class="jobs-list">

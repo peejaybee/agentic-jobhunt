@@ -21,7 +21,7 @@ def format_date_badge(pub_date_str: str) -> str:
     return f'<span class="badge date">{clean_date}</span>'
 
 
-def generate_dashboard(rated_jobs, resume_path, searched_keywords, total_found, total_evaluated):
+def generate_dashboard(rated_jobs, resume_path, searched_keywords, total_found, total_evaluated, rejection_stats=None):
     sorted_jobs = sorted(rated_jobs, key=lambda x: x["score"], reverse=True)
     top_10 = sorted_jobs[:10]
     avg_score = 0
@@ -60,6 +60,15 @@ def generate_dashboard(rated_jobs, resume_path, searched_keywords, total_found, 
                 job_url=html.escape(job["url"])
             )
     resume_filename = os.path.basename(resume_path)
+    
+    if rejection_stats is None:
+        rejection_stats = {}
+    
+    keyword_excluded = rejection_stats.get("keyword_excluded", 0)
+    employer_excluded = rejection_stats.get("employer_excluded", 0)
+    missing_salary = rejection_stats.get("missing_salary", 0)
+    salary_too_low = rejection_stats.get("salary_too_low", 0)
+
     output_html = (
         HTML_TEMPLATE.replace("{resume_filename}", html.escape(resume_filename))
         .replace("{searched_keywords}", html.escape(searched_keywords))
@@ -67,6 +76,10 @@ def generate_dashboard(rated_jobs, resume_path, searched_keywords, total_found, 
         .replace("{total_evaluated}", str(total_evaluated))
         .replace("{avg_score}", str(avg_score))
         .replace("{avg_score_class}", avg_score_class)
+        .replace("{keyword_excluded}", str(keyword_excluded))
+        .replace("{employer_excluded}", str(employer_excluded))
+        .replace("{missing_salary}", str(missing_salary))
+        .replace("{salary_too_low}", str(salary_too_low))
         .replace("{jobs_html_content}", jobs_html_content)
     )
     today_str = datetime.datetime.now().strftime("%Y-%m-%d")
