@@ -7,6 +7,8 @@ logger = logging.getLogger(__name__)
 
 DB_FILE = "jobs_cache.db"
 
+CACHE_TTL_DAYS = 13
+
 def get_db_path() -> str:
     script_dir = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(script_dir, DB_FILE)
@@ -136,8 +138,8 @@ def cleanup_old_cache():
     conn = sqlite3.connect(db_path)
     try:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM salary_cache WHERE datetime(evaluated_at) < datetime('now', '-13 days', '-12 hours')")
-        cursor.execute("DELETE FROM ats_cache WHERE datetime(evaluated_at) < datetime('now', '-13 days', '-12 hours')")
+        cursor.execute("DELETE FROM salary_cache WHERE datetime(evaluated_at) < datetime('now', ?, ?)", (f'-{CACHE_TTL_DAYS} days', '-12 hours'))
+        cursor.execute("DELETE FROM ats_cache WHERE datetime(evaluated_at) < datetime('now', ?, ?)", (f'-{CACHE_TTL_DAYS} days', '-12 hours'))
         conn.commit()
     except Exception as e:
         logger.warning("Failed to clean up old cache: %s", e)

@@ -1,3 +1,4 @@
+import aiohttp
 import asyncio
 import datetime
 import logging
@@ -159,22 +160,17 @@ async def run_pipeline(
     publishers_file = os.path.abspath(os.path.join(_WORKSPACE_ROOT, pub_file_name))
     excluded_publishers = load_excluded_publishers(publishers_file)
 
-    wwr_task = asyncio.create_task(asyncio.to_thread(ingestion.fetch_weworkremotely_jobs))
-    remotive_task = asyncio.create_task(asyncio.to_thread(ingestion.fetch_remotive_jobs))
-    arbeitnow_task = asyncio.create_task(asyncio.to_thread(ingestion.fetch_arbeitnow_jobs))
-    themuse_task = asyncio.create_task(asyncio.to_thread(ingestion.fetch_themuse_jobs))
-    jsearch_task = asyncio.create_task(asyncio.to_thread(
-        ingestion.fetch_jsearch_jobs,
-        job_titles_str,
-        excluded_publishers
-    ))
-    himalayas_task = asyncio.create_task(asyncio.to_thread(ingestion.fetch_himalayas_jobs))
-    remoteok_task = asyncio.create_task(asyncio.to_thread(ingestion.fetch_remoteok_jobs))
-
-    wwr_jobs, remotive_jobs, arbeitnow_jobs, themuse_jobs, jsearch_jobs, himalayas_jobs, remoteok_jobs = await asyncio.gather(
-        wwr_task, remotive_task, arbeitnow_task, themuse_task, jsearch_task, himalayas_task, remoteok_task
-    )
-    all_jobs = wwr_jobs + remotive_jobs + arbeitnow_jobs + themuse_jobs + jsearch_jobs + himalayas_jobs + remoteok_jobs
+    async with aiohttp.ClientSession() as session:
+        wwr_jobs, remotive_jobs, arbeitnow_jobs, themuse_jobs, jsearch_jobs, himalayas_jobs, remoteok_jobs = await asyncio.gather(
+            ingestion.fetch_weworkremotely_jobs(session),
+            ingestion.fetch_remotive_jobs(session),
+            ingestion.fetch_arbeitnow_jobs(session),
+            ingestion.fetch_themuse_jobs(session),
+            ingestion.fetch_jsearch_jobs(session, job_titles_str, excluded_publishers),
+            ingestion.fetch_himalayas_jobs(session),
+            ingestion.fetch_remoteok_jobs(session),
+        )
+        all_jobs = wwr_jobs + remotive_jobs + arbeitnow_jobs + themuse_jobs + jsearch_jobs + himalayas_jobs + remoteok_jobs
 
     if max_age > 0:
         current_time = datetime.datetime.utcnow()

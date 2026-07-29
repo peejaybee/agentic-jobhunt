@@ -336,13 +336,13 @@ def execute_pipeline(context, query, max_eval, min_salary, concurrency, desc_lim
     context.all_fetched = wwr_list + remotive_list + arbeitnow_list + themuse_list + jsearch_list + himalayas_list + remoteok_list
     context.crawled_sources = {"We Work Remotely", "Remotive", "Arbeitnow", "The Muse", "JSearch", "Himalayas", "Remote OK"}
 
-    def mock_fetch_wwr(): return wwr_list
-    def mock_fetch_remotive(): return remotive_list
-    def mock_fetch_arbeitnow(): return arbeitnow_list
-    def mock_fetch_themuse(): return themuse_list
-    def mock_fetch_himalayas(): return himalayas_list
-    def mock_fetch_remoteok(): return remoteok_list
-    def mock_fetch_jsearch(job_titles_str, exclude_publishers=None):
+    async def mock_fetch_wwr(session): return wwr_list
+    async def mock_fetch_remotive(session): return remotive_list
+    async def mock_fetch_arbeitnow(session): return arbeitnow_list
+    async def mock_fetch_themuse(session): return themuse_list
+    async def mock_fetch_himalayas(session): return himalayas_list
+    async def mock_fetch_remoteok(session): return remoteok_list
+    async def mock_fetch_jsearch(session, job_titles_str, exclude_publishers=None):
         if not exclude_publishers:
             return jsearch_list
         filtered = []

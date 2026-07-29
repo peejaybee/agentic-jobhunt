@@ -4,13 +4,14 @@ An AI-powered, multi-skill remote job crawler and resume evaluation agent. It ag
 
 ---
 
-The agent is built using a hybrid architecture combining high-performance native Python pipelines with the Google ADK framework:
+The agent is built using a hybrid architecture combining high-performance async Python pipelines with the Google ADK framework:
 
 1. **Resume PDF Parsing**: Natively extracts text from local PDF resumes using the `pypdf` library.
 2. **Employer Exclusion**: Natively filters out listings from companies specified in `excluded_employers.txt` using case-insensitive checks.
-3. **JSearch Ingestion**: Natively queries high-volume web job postings using JSearch via RapidAPI, supporting publisher exclusion lists.
-4. **Compensation Filter (ADK Agent Skill)**: Uses a local LLM agent to parse unstructured job descriptions, normalize salary ranges to USD/year, and exclude listings that pay below your target threshold or omit compensation information.
-5. **ATS Scoring (ADK Agent Skill)**: Evaluates resume compatibility against qualified job descriptions, returning a suitability score (0-100) and structured AI recruiter feedback.
+3. **Async Job Feed Ingestion**: Concurrently fetches remote job listings from 7 sources using `aiohttp` with a shared `ClientSession`, 3-retry exponential backoff, and configurable per-fetcher timeouts (20s for feed APIs, 30s for JSearch).
+4. **JSearch Ingestion**: Natively queries high-volume web job postings using JSearch via RapidAPI, supporting publisher exclusion lists.
+5. **Compensation Filter (ADK Agent Skill)**: Uses a local LLM agent to parse unstructured job descriptions, normalize salary ranges to USD/year, and exclude listings that pay below your target threshold or omit compensation information.
+6. **ATS Scoring (ADK Agent Skill)**: Evaluates resume compatibility against qualified job descriptions, returning a suitability score (0-100) and structured AI recruiter feedback.
 
 ### Advanced Agentic Behaviors
 * **Progressive Disclosure**: Reconfigured to use a dynamic `LocalSkillRegistry`. Instead of hardcoding skill data, the orchestrator loads `SKILL.md` definitions dynamically from disk only when a skill tool is invoked.
@@ -24,7 +25,7 @@ The agent is built using a hybrid architecture combining high-performance native
 * **Python 3.8+**
 * **Ollama**: Run Ollama locally with the default model downloaded:
   ```bash
-  ollama pull llama3.1:latest
+  ollama pull qwen2.5-coder:14b
   ```
 * **JSearch API Account**: RapidAPI credentials (see below).
 
@@ -85,7 +86,7 @@ python job_matcher_agent.py --resume resume.pdf --titles "Python Developer, Soft
 
 To filter out noise and target high-quality listings, you can customize three exclusion lists in the workspace root:
 1. **`excluded_employers.txt`**: List of company names (case-insensitive substring match) to skip. For example, add `example.com` to exclude jobs from Example.com.
-2. **`excluded_keywords.txt`**: List of keywords or phrases (case-insensitive substring match). The pipeline scans both job titles and job descriptions, immediately discarding any jobs matching these terms. By default, it excludes AI training/annotation contracts:
+2. **`excluded_keywords.txt`**: List of keywords or phrases (case-insensitive substring match). The pipeline scans both job titles and job descriptions, immediately discarding any jobs matching these terms. By default, it excludes AI training/annotation contracts and security clearance requirements:
    ```text
    ai trainer
    ai training
@@ -101,6 +102,13 @@ To filter out noise and target high-quality listings, you can customize three ex
    ai evaluator
    evaluation consultant
    24-mag
+   security clearance
+   active clearance
+   secret clearance
+   top secret
+   ts/sci
+   ts-sci
+   public trust
    ```
 3. **`excluded_publishers.txt`**: List of job boards or publishers (case-insensitive substring match) to skip from JSearch results (e.g., `Upwork`, `BeBee`, `Freelancer`). Filtering happens natively at the API level (saving JSearch API quota) and is double-checked locally.
 
@@ -111,7 +119,8 @@ To filter out noise and target high-quality listings, you can customize three ex
 To optimize execution speed and minimize local LLM load, the agent utilizes a local SQLite database (`jobs_cache.db`) in the workspace root to cache job evaluations:
 * **Salary Filter Cache**: Stores the outcome of salary extraction checks, keyed by the job's URL. Since job compensation ranges are candidate-independent, this cache persists long-term.
 * **Resume-Sensitive ATS Cache**: Stores resume compatibility matching scores, keyed by the job's URL and the candidate's resume text SHA-256 hash. If you update your resume, the agent automatically detects the hash difference and re-evaluates the match score, while still loading the salary checks from the cache.
-* **Concurrent Ingestion**: Job board feed retrievals are run concurrently in background threads using `asyncio.to_thread` alongside JSearch async fetching, reducing feed ingestion time to a fraction of sequential fetching.
+* **Configurable Cache TTL**: Both caches are pruned automatically on startup — stale entries older than 13 days (plus a 12-hour grace window) are removed. The retention period is controlled by the `CACHE_TTL_DAYS` constant in `cache.py` (default: 13). Adjust this value to balance cache freshness against API/LLM call volume.
+* **Async Concurrent Ingestion**: All 7 job board feed fetchers use a shared `aiohttp.ClientSession` and run concurrently via `asyncio.gather`, reducing total feed ingestion time to a fraction of sequential fetching. Each fetcher implements 3-retry exponential backoff (2^attempt seconds). Six feed API fetchers use a 20-second timeout; the JSearch API fetcher uses a 30-second timeout. Only the We Work Remotely RSS parser keeps synchronous XML parsing — the HTTP layer is async.
 
 ---
 
