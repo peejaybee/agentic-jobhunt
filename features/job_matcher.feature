@@ -13,13 +13,13 @@ Feature: Remote Job Matching and Resume Scoring
       | Title             | Company     | Source            | Salary Range        |
       | Python Developer  | Tech Corp   | We Work Remotely  | $160,000 - $180,000 |
       | QA Engineer       | Test Labs   | Remotive          | $90,000 - $115,000  |
-      | Software Engineer | Dev Shop    | Arbeitnow         | Not Specified       |
+      | ML Engineer (Remote) | Dev Shop    | Arbeitnow         | Not Specified       |
       | ML Engineer       | AI Labs     | The Muse          | $130,000 - $145,000 |
     When I run the matching agent with query "Python, ML", max eval 2, min salary 120000, concurrency 2, and description limit 4000
     Then the agent should crawl jobs from We Work Remotely, Remotive, Arbeitnow, The Muse, and JSearch
     And the agent should query search APIs using the query "Python, ML"
     And the agent should evaluate matching listings against the $120k salary threshold with a concurrency cap of 2
-    And only the "Python Developer" and "ML Engineer" jobs should pass the salary filter
+    And only the "Python Developer", "ML Engineer", and "ML Engineer (Remote)" jobs should pass the salary filter
     And the agent should evaluate those 2 passed jobs against my resume using the ATS scorer with descriptions truncated to 4000 characters
     And a date-stamped HTML dashboard should be generated
     And the dashboard should display the matching jobs sorted by score

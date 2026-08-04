@@ -66,6 +66,10 @@ def step_impl(context):
     context.arbeitnow_jobs = []
     context.themuse_jobs = []
     context.jsearch_jobs = []
+    context.himalayas_jobs = []
+    context.remoteok_jobs = []
+    context.nodesk_jobs = []
+    context.yc_jobs = []
 
     for row in context.table:
         title = row['Title']
@@ -105,6 +109,15 @@ def step_impl(context):
             context.themuse_jobs.append(job)
         elif source == "JSearch":
             context.jsearch_jobs.append(job)
+        elif source == "Himalayas":
+            context.himalayas_jobs.append(job)
+        elif source == "Remote OK":
+            context.remoteok_jobs.append(job)
+        elif source == "NoDesk":
+            context.nodesk_jobs.append(job)
+        elif source in ("Y Combinator (Hacker News)", "Y Combinator", "YC"):
+            job["source"] = "Y Combinator (Hacker News)"
+            context.yc_jobs.append(job)
 
 @given('the remote job feeds do not contain any listings matching "{query}"')
 def step_impl(context, query):
@@ -113,6 +126,10 @@ def step_impl(context, query):
     context.arbeitnow_jobs = []
     context.themuse_jobs = []
     context.jsearch_jobs = []
+    context.himalayas_jobs = []
+    context.remoteok_jobs = []
+    context.nodesk_jobs = []
+    context.yc_jobs = []
 
 @given('my exclusion file "{filename}" contains "{employer}"')
 def step_impl(context, filename, employer):
@@ -256,6 +273,11 @@ def step_impl(context, job1, job2):
     passed_titles = {j["title"] for j in context.passed_jobs}
     assert passed_titles == {job1, job2}, f"Passed jobs: {passed_titles}"
 
+@then('only the "{job1}", "{job2}", and "{job3}" jobs should pass the salary filter')
+def step_impl(context, job1, job2, job3):
+    passed_titles = {j["title"] for j in context.passed_jobs}
+    assert passed_titles == {job1, job2, job3}, f"Passed jobs: {passed_titles}"
+
 @then('the agent should evaluate those {count:d} passed jobs against my resume using the ATS scorer with descriptions truncated to {desc_limit:d} characters')
 def step_impl(context, count, desc_limit):
     assert len(context.evaluated_jobs) == count, f"Evaluated jobs count: {len(context.evaluated_jobs)}"
@@ -332,9 +354,11 @@ def execute_pipeline(context, query, max_eval, min_salary, concurrency, desc_lim
     jsearch_list = getattr(context, 'jsearch_jobs', [])
     himalayas_list = getattr(context, 'himalayas_jobs', [])
     remoteok_list = getattr(context, 'remoteok_jobs', [])
+    nodesk_list = getattr(context, 'nodesk_jobs', [])
+    yc_list = getattr(context, 'yc_jobs', [])
     
-    context.all_fetched = wwr_list + remotive_list + arbeitnow_list + themuse_list + jsearch_list + himalayas_list + remoteok_list
-    context.crawled_sources = {"We Work Remotely", "Remotive", "Arbeitnow", "The Muse", "JSearch", "Himalayas", "Remote OK"}
+    context.all_fetched = wwr_list + remotive_list + arbeitnow_list + themuse_list + jsearch_list + himalayas_list + remoteok_list + nodesk_list + yc_list
+    context.crawled_sources = {"We Work Remotely", "Remotive", "Arbeitnow", "The Muse", "JSearch", "Himalayas", "Remote OK", "NoDesk", "Y Combinator (Hacker News)"}
 
     async def mock_fetch_wwr(session): return wwr_list
     async def mock_fetch_remotive(session): return remotive_list
@@ -342,6 +366,8 @@ def execute_pipeline(context, query, max_eval, min_salary, concurrency, desc_lim
     async def mock_fetch_themuse(session): return themuse_list
     async def mock_fetch_himalayas(session): return himalayas_list
     async def mock_fetch_remoteok(session): return remoteok_list
+    async def mock_fetch_nodesk(session): return nodesk_list
+    async def mock_fetch_yc(session): return yc_list
     async def mock_fetch_jsearch(session, job_titles_str, exclude_publishers=None):
         if not exclude_publishers:
             return jsearch_list
@@ -427,6 +453,8 @@ def execute_pipeline(context, query, max_eval, min_salary, concurrency, desc_lim
          patch('ingestion.fetch_jsearch_jobs', mock_fetch_jsearch), \
          patch('ingestion.fetch_himalayas_jobs', mock_fetch_himalayas), \
          patch('ingestion.fetch_remoteok_jobs', mock_fetch_remoteok), \
+         patch('ingestion.fetch_nodesk_jobs', mock_fetch_nodesk), \
+         patch('ingestion.fetch_yc_jobs', mock_fetch_yc), \
          patch('google.adk.runners.Runner.run_async', mock_runner_run_async), \
          patch('google.adk.tools.skill_toolset.RunSkillScriptTool.run_async', mock_run_skill_script_tool_run_async), \
          patch('sys.exit') as mock_sys_exit:

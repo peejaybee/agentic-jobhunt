@@ -131,6 +131,14 @@ async def run_matching_pipeline(
         score_tasks.append(task)
 
     rated_jobs = await asyncio.gather(*score_tasks)
+    
+    # Apply 10-point penalty for unspecified salary
+    for job in rated_jobs:
+        if job.get("salary_not_specified"):
+            original_score = job.get("score", 0)
+            job["score"] = max(0, original_score - 10)
+            job["explanation"] = f"[Note: 10-point penalty applied for unspecified compensation] {job.get('explanation', '')}"
+            
     return rated_jobs
 
 
@@ -161,7 +169,7 @@ async def run_pipeline(
     excluded_publishers = load_excluded_publishers(publishers_file)
 
     async with aiohttp.ClientSession() as session:
-        wwr_jobs, remotive_jobs, arbeitnow_jobs, themuse_jobs, jsearch_jobs, himalayas_jobs, remoteok_jobs = await asyncio.gather(
+        wwr_jobs, remotive_jobs, arbeitnow_jobs, themuse_jobs, jsearch_jobs, himalayas_jobs, remoteok_jobs, nodesk_jobs, yc_jobs = await asyncio.gather(
             ingestion.fetch_weworkremotely_jobs(session),
             ingestion.fetch_remotive_jobs(session),
             ingestion.fetch_arbeitnow_jobs(session),
@@ -169,8 +177,10 @@ async def run_pipeline(
             ingestion.fetch_jsearch_jobs(session, job_titles_str, excluded_publishers),
             ingestion.fetch_himalayas_jobs(session),
             ingestion.fetch_remoteok_jobs(session),
+            ingestion.fetch_nodesk_jobs(session),
+            ingestion.fetch_yc_jobs(session),
         )
-        all_jobs = wwr_jobs + remotive_jobs + arbeitnow_jobs + themuse_jobs + jsearch_jobs + himalayas_jobs + remoteok_jobs
+        all_jobs = wwr_jobs + remotive_jobs + arbeitnow_jobs + themuse_jobs + jsearch_jobs + himalayas_jobs + remoteok_jobs + nodesk_jobs + yc_jobs
 
     if max_age > 0:
         current_time = datetime.datetime.utcnow()

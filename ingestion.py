@@ -392,3 +392,187 @@ async def fetch_remoteok_jobs(session: aiohttp.ClientSession) -> list[dict]:
                 return []
             logger.warning("Remote OK request attempt %s failed: %s. Retrying in %ss...", attempt + 1, e, 2 ** attempt)
             await asyncio.sleep(2 ** attempt)
+
+async def fetch_nodesk_jobs(session: aiohttp.ClientSession) -> list[dict]:
+    """Fetches jobs from NoDesk RSS feed."""
+    url = "https://nodesk.co/remote-jobs/index.xml"
+    logger.info("Fetching jobs from NoDesk...")
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ATSJobMatcher/1.0"}
+
+    for attempt in range(3):
+        try:
+            async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=20)) as response:
+                response.raise_for_status()
+                content = await response.text()
+
+            # Sanitize named HTML entities so standard XML parser doesn't crash
+            import re
+            import html.entities
+            
+            def sanitize_xml_entities(xml_str: str) -> str:
+                standard_entities = {"amp", "lt", "gt", "quot", "apos"}
+                def replace_entity(match):
+                    entity_name = match.group(1)
+                    if entity_name in standard_entities:
+                        return match.group(0)
+                    codepoint = html.entities.name2codepoint.get(entity_name)
+                    if codepoint:
+                        return f"&#{codepoint};"
+                    return ""
+                return re.sub(r'&([a-zA-Z0-9]+);', replace_entity, xml_str)
+
+            sanitized_content = sanitize_xml_entities(content)
+            root = ET.fromstring(sanitized_content)
+            
+            jobs = []
+            for item in root.findall(".//item"):
+                title_text = item.find("title").text or ""
+                company = "Unknown"
+                title = title_text
+
+                # NoDesk RSS titles are formatted as "Job Title at Company Name"
+                if " at " in title_text:
+                    parts = title_text.rsplit(" at ", 1)
+                    title = parts[0].strip()
+                    company = parts[1].strip()
+
+                description = item.find("description").text or ""
+                link = item.find("link").text or ""
+                pub_date = item.find("pubDate").text or ""
+
+                jobs.append({
+                    "source": "NoDesk",
+                    "title": title, # Using the split title keeps the dashboard clean and matches other feed architectures
+                    "company_name": company,
+                    "description": description,
+                    "url": link,
+                    "publication_date": pub_date,
+                    "category": "Remote Job"
+                })
+
+            logger.info("Retrieved %s jobs from NoDesk RSS feed.", len(jobs))
+            return jobs
+        except (aiohttp.ClientError, asyncio.TimeoutError, Exception) as e:
+            if attempt == 2:
+                logger.warning("Failed to fetch NoDesk jobs after 3 attempts: %s", e)
+                return []
+            logger.warning("NoDesk request attempt %s failed: %s. Retrying in %ss...", attempt + 1, e, 2 ** attempt)
+            await asyncio.sleep(2 ** attempt)
+
+async def fetch_yc_jobs(session: aiohttp.ClientSession) -> list[dict]:
+    """Fetches startup job listings from Y Combinator / Hacker News 'Who is Hiring?' threads via the public Algolia API."""
+    logger.info("Fetching jobs from Y Combinator (Hacker News 'Who is Hiring?')...")
+    
+    # Step 1: Find the latest two official hiring threads from user "whoishiring"
+    stories_url = "https://hn.algolia.com/api/v1/search_by_date?tags=story,author_whoishiring&hitsPerPage=5"
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ATSJobMatcher/1.0"}
+    
+    for attempt in range(3):
+        try:
+            async with session.get(stories_url, headers=headers, timeout=aiohttp.ClientTimeout(total=20)) as response:
+                response.raise_for_status()
+                data = await response.json()
+            break
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            if attempt == 2:
+                logger.warning("Failed to fetch YC whoishiring story list: %s", e)
+                return []
+            logger.warning("YC story request attempt %s failed: %s. Retrying in %ss...", attempt + 1, e, 2 ** attempt)
+            await asyncio.sleep(2 ** attempt)
+            
+    hits = data.get("hits", [])
+    if not hits:
+        logger.warning("No 'whoishiring' stories found.")
+        return []
+        
+    # We will fetch listings from the latest 2 monthly threads to ensure coverage of the past 30-40 days
+    # (Typically posted on the 1st of each month, e.g. "Ask HN: Who is hiring?")
+    stories_to_fetch = []
+    for hit in hits:
+        title = hit.get("title", "")
+        if "Who is hiring?" in title or "Who is hiring right now?" in title:
+            stories_to_fetch.append(hit)
+            if len(stories_to_fetch) >= 2:
+                break
+                
+    if not stories_to_fetch:
+        logger.warning("No official 'Who is hiring?' threads found in recent posts.")
+        return []
+        
+    all_jobs = []
+    
+    for story in stories_to_fetch:
+        story_id = story["objectID"]
+        story_title = story["title"]
+        logger.info("Fetching job postings from thread: '%s' (ID: %s)...", story_title, story_id)
+        
+        # Step 2: Retrieve the comments (job postings) for this story (up to 1000 hits)
+        comments_url = f"https://hn.algolia.com/api/v1/search?tags=comment,story_{story_id}&hitsPerPage=1000"
+        
+        for attempt in range(3):
+            try:
+                async with session.get(comments_url, headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as response:
+                    response.raise_for_status()
+                    comments_data = await response.json()
+                break
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                if attempt == 2:
+                    logger.warning("Failed to fetch comments for story %s after 3 attempts: %s", story_id, e)
+                    comments_data = {}
+                else:
+                    logger.warning("YC comments request attempt %s failed for story %s: %s. Retrying...", attempt + 1, story_id, e)
+                    await asyncio.sleep(2 ** attempt)
+                    
+            if attempt == 2:
+                comments_data = {}
+                
+        comments = comments_data.get("hits", [])
+        
+        # Step 3: Filter for top-level postings and clean them
+        import html
+        import re
+        
+        jobs_count = 0
+        for comment in comments:
+            # Must be a top-level comment (parent_id == story_id)
+            parent_id = str(comment.get("parent_id", ""))
+            if parent_id != str(story_id):
+                continue
+                
+            text = comment.get("comment_text", "")
+            if not text:
+                continue
+                
+            # Clean HTML to plain text
+            text_clean = text.replace("<p>", "\n\n").replace("<br>", "\n").replace("<br/>", "\n")
+            text_clean = re.sub(r'<[^>]+>', '', text_clean)
+            text_clean = html.unescape(text_clean)
+            
+            lines = [line.strip() for line in text_clean.split("\n") if line.strip()]
+            if not lines:
+                continue
+                
+            first_line = lines[0]
+            
+            # Extract company name from the first line
+            parts = [p.strip() for p in first_line.split("|")]
+            company = parts[0] if parts else "Unknown"
+            
+            # For Hacker News postings, setting the title as the full first line is best
+            # since it contains all location, remote options, and stack info, which is evaluated against keywords.
+            job_url = f"https://news.ycombinator.com/item?id={comment['objectID']}"
+            all_jobs.append({
+                "source": "Y Combinator (Hacker News)",
+                "title": first_line,
+                "company_name": company,
+                "description": text_clean,
+                "url": job_url,
+                "publication_date": comment.get("created_at", ""),
+                "category": "Remote/Onsite Startup Job"
+            })
+            jobs_count += 1
+            
+        logger.info("Parsed %s top-level job postings from thread ID %s.", jobs_count, story_id)
+        
+    logger.info("Retrieved %s total jobs from Y Combinator (Hacker News).", len(all_jobs))
+    return all_jobs

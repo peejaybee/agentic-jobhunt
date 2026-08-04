@@ -76,7 +76,7 @@ python job_matcher_agent.py --resume resume.pdf --titles "Python Developer, Soft
 * `--titles`: (Required) Comma-separated list of keywords/job titles to match.
 * `--model`: LiteLLM-compatible Ollama model name (default: `ollama_chat/llama3.1:latest`).
 * `--max-eval`: Maximum number of qualified jobs to score using the local LLM (default: `30`).
-* `--min-salary`: Minimum salary threshold in USD to keep a job (default: `150000`).
+* `--min-salary`: Minimum salary threshold in USD to keep a job (default: `150000`). Jobs with unspecified compensation are allowed to pass the filter, but will receive a 10-point ATS match score penalty.
 * `--concurrency`: Maximum concurrent LLM calls allowed (default: `3`). Capping concurrency protects local LLMs from CPU/GPU memory exhaustion.
 * `--desc-limit`: Character limit for truncating job descriptions sent to LLMs (default: `10000`). Keeps token windows compact.
 
@@ -120,7 +120,7 @@ To optimize execution speed and minimize local LLM load, the agent utilizes a lo
 * **Salary Filter Cache**: Stores the outcome of salary extraction checks, keyed by the job's URL. Since job compensation ranges are candidate-independent, this cache persists long-term.
 * **Resume-Sensitive ATS Cache**: Stores resume compatibility matching scores, keyed by the job's URL and the candidate's resume text SHA-256 hash. If you update your resume, the agent automatically detects the hash difference and re-evaluates the match score, while still loading the salary checks from the cache.
 * **Configurable Cache TTL**: Both caches are pruned automatically on startup — stale entries older than 13 days (plus a 12-hour grace window) are removed. The retention period is controlled by the `CACHE_TTL_DAYS` constant in `cache.py` (default: 13). Adjust this value to balance cache freshness against API/LLM call volume.
-* **Async Concurrent Ingestion**: All 7 job board feed fetchers use a shared `aiohttp.ClientSession` and run concurrently via `asyncio.gather`, reducing total feed ingestion time to a fraction of sequential fetching. Each fetcher implements 3-retry exponential backoff (2^attempt seconds). Six feed API fetchers use a 20-second timeout; the JSearch API fetcher uses a 30-second timeout. Only the We Work Remotely RSS parser keeps synchronous XML parsing — the HTTP layer is async.
+* **Async Concurrent Ingestion**: All 9 job board feed fetchers (We Work Remotely, Remotive, Arbeitnow, The Muse, JSearch, Himalayas, Remote OK, NoDesk, and Y Combinator / Hacker News 'Who is Hiring?') use a shared `aiohttp.ClientSession` and run concurrently via `asyncio.gather`, reducing total feed ingestion time. Each fetcher implements a 3-retry exponential backoff (2^attempt seconds). Standard feed fetchers use a 20-second timeout; the JSearch and YC Algolia fetchers use a 30-second timeout. NoDesk and We Work Remotely XML parsing runs synchronously on fetched buffers after custom HTML entity sanitization.
 
 ---
 

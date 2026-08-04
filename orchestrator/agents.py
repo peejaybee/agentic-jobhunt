@@ -344,14 +344,12 @@ async def filter_job_via_skill(
                 has_salary = cached.get("has_salary", False)
                 max_salary = cached.get("max_salary_usd", 0.0)
                 min_salary = cached.get("min_salary_usd", 0.0)
-                passed = has_salary and max_salary >= min_salary_threshold
+                passed = (not has_salary) or (max_salary >= min_salary_threshold)
                 if not passed and salary_rejections is not None:
-                    if not has_salary:
-                        salary_rejections.append("missing_salary")
-                    else:
-                        salary_rejections.append("salary_too_low")
+                    salary_rejections.append("salary_too_low")
                 if not has_salary:
-                    reason = "No salary range or pay range is listed in the posting."
+                    job["salary_not_specified"] = True
+                    reason = "No salary range or pay range is listed in the posting. (Allowed with penalty)"
                 elif not passed:
                     reason = f"Salary max ({max_salary}) is below the required ${min_salary_threshold:,} threshold. (Range: {min_salary}-{max_salary})"
                 else:
@@ -461,14 +459,12 @@ async def filter_job_via_skill(
                 explanation = parsed.get("explanation", "")
                 if job_url:
                     cache.set_cached_salary(job_url, has_salary, min_salary, max_salary, explanation)
-                passed = has_salary and max_salary >= min_salary_threshold
+                passed = (not has_salary) or (max_salary >= min_salary_threshold)
                 if not passed and salary_rejections is not None:
-                    if not has_salary:
-                        salary_rejections.append("missing_salary")
-                    else:
-                        salary_rejections.append("salary_too_low")
+                    salary_rejections.append("salary_too_low")
                 if not has_salary:
-                    reason = "No salary range or pay range is listed in the posting."
+                    job["salary_not_specified"] = True
+                    reason = "No salary range or pay range is listed in the posting. (Allowed with penalty)"
                 elif not passed:
                     reason = f"Salary max ({max_salary}) is below the required ${min_salary_threshold:,} threshold. (Range: {min_salary}-{max_salary})"
                 else:
@@ -477,12 +473,10 @@ async def filter_job_via_skill(
                 logger.info("[%s/%s] Salary filter result for %s: %s - %s", idx, total, job['title'], status, reason)
                 return job, passed
             else:
-                logger.warning("[%s/%s] Failed to retrieve valid salary JSON for %s after retries.", idx, total, job['title'])
-                if salary_rejections is not None:
-                    salary_rejections.append("missing_salary")
-                return job, False
+                logger.warning("[%s/%s] Failed to retrieve valid salary JSON for %s after retries. Treating as unspecified.", idx, total, job['title'])
+                job["salary_not_specified"] = True
+                return job, True
         except Exception as e:
-            logger.error("[%s/%s] Error filtering job %s: %s", idx, total, job['title'], e)
-            if salary_rejections is not None:
-                salary_rejections.append("missing_salary")
-            return job, False
+            logger.error("[%s/%s] Error filtering job %s: %s. Treating as unspecified.", idx, total, job['title'], e)
+            job["salary_not_specified"] = True
+            return job, True
