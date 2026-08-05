@@ -18,6 +18,7 @@ Analyze the candidate's resume, the job description, and the primary evaluation 
 1. **Audit for Skill Hallucinations**:
    - Verify that every technical skill or technology claimed as a match in the primary explanation is explicitly listed or clearly supported by the candidate's resume.
    - If the primary explanation claims the candidate has experience or knowledge of key required technologies (e.g. Kotlin, Android, Jetpack, Meta Ads, etc.) that are NOT found in the resume, you must mark this as a hallucination.
+   - **Audit for Contextual Conflation**: Verify that matched terms have matching semantic meanings and contexts. If the primary evaluator matched a term that is contextually different in the resume (e.g. treating "remote-control" or "control equipment" as a match for "control systems", "control techniques", or "control theory"), you must mark this as a validation hallucination error, set `is_valid` to `false`, set `corrected_score` to `0`, and explain the semantic mismatch in `validation_notes`.
 
 2. **Audit for Timezone & Location Mismatches**:
    - The candidate is located in the United States and works remotely.

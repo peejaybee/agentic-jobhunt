@@ -28,6 +28,7 @@ Analyze the candidate's resume against the provided job description and evaluate
    - Do not assume, extrapolate, or invent any candidate experience or skills.
    - If a technology, tool, or skill (e.g. Meta Ads, Google Ads) is listed in the job description but is NOT explicitly mentioned in the candidate's resume, you must assume the candidate has ZERO experience in it and list it as a gap.
    - Every matched skill claimed in the explanation MUST be directly backed by the resume. Do not hallucinate matches.
+   - **Semantic & Contextual Alignment**: Ensure matched terms have the same meaning and context in both the job description and the resume. Do not conflate general verbs or adjectives with specialized technical nouns. For example, do not count "remote-control" or "control equipment" as experience in "control techniques", "control systems", or "control theory". Similarly, "lead team" is not "lead generation", and "database design" is not "graphic design".
 
 ## Expected Output Format
 You MUST return your final response strictly as a JSON object matching this schema:
