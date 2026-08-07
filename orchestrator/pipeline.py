@@ -285,6 +285,8 @@ async def run_pipeline(
         cumulative_stats[k] += current_stats[k]
     save_rejection_stats(cumulative_stats)
 
+    rated_jobs = rated_jobs.filter(lambda x: x["score"] >= 60)
+
     output_path = generate_dashboard(
         rated_jobs=rated_jobs,
         resume_path=resume_path,
